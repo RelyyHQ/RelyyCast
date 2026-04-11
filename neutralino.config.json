@@ -3,19 +3,22 @@
   "applicationId": "com.relyycast.app",
   "version": "0.1.0",
   "defaultMode": "window",
+  "documentRoot": "/build/",
+  
   "port": 0,
   "enableServer": true,
   "enableNativeAPI": true,
   "tokenSecurity": "one-time",
-  "url": "http://127.0.0.1:3000",
   "nativeAllowList": [
     "app.*",
     "window.*",
-    "events.*"
+    "events.*",
+    "filesystem.readDirectory"
   ],
   "modes": {
     "window": {
       "title": "RelyyCast",
+      "icon": "/favicon.ico",
       "width": 1024,
       "height": 500,
       "minWidth": 1024,
@@ -37,9 +40,17 @@
   },
   "cli": {
     "binaryName": "relyycast",
-    "resourcesPath": "./resources/",
+    "resourcesPath": "/build/",
     "extensionsPath": "./extensions/",
-    "binaryVersion": "6.7.0"
+    "binaryVersion": "6.7.0",
+    "frontendLibrary": {
+      "patchFile": "/index.html",
+      "devUrl": "http://127.0.0.1:3000",
+      "projectPath": "/",
+      "initCommand": "npm install",
+      "devCommand": "npm run dev",
+      "buildCommand": "npm run build"
+    }
   },
   "logging": {
     "enabled": true,

@@ -1,4 +1,4 @@
-"use client";
+
 
 import { useEffect, useState } from "react";
 import AgentOperationsPanel from "@/components/agent-operations-panel";
@@ -53,7 +53,7 @@ export function StationConsole() {
     lastChunkAt: string | null;
   } | null>(null);
 
-  const streamOrigin = process.env.NEXT_PUBLIC_STREAM_ORIGIN_URL ?? "http://127.0.0.1:8177";
+  const streamOrigin = import.meta.env.VITE_STREAM_ORIGIN_URL ?? "http://127.0.0.1:8177";
   const streamUrl = `${streamOrigin}/live.mp3`;
 
   useEffect(() => {

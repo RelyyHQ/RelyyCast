@@ -12,9 +12,18 @@ const streamState = {
   lastChunkAt: 0,
 };
 
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
 function writeJson(res, statusCode, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
+    ...corsHeaders(),
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Content-Length": Buffer.byteLength(body),
@@ -35,6 +44,7 @@ function handleHealth(_req, res) {
 
 function handleLive(_req, res) {
   res.writeHead(200, {
+    ...corsHeaders(),
     "Content-Type": "audio/mpeg",
     "Transfer-Encoding": "chunked",
     "Cache-Control": "no-store, no-transform",
@@ -93,6 +103,12 @@ function handleIngest(req, res) {
 const server = http.createServer((req, res) => {
   if (!req.url || !req.method) {
     writeJson(res, 400, { ok: false, error: "invalid request" });
+    return;
+  }
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders());
+    res.end();
     return;
   }
 

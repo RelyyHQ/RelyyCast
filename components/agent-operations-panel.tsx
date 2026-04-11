@@ -1,4 +1,4 @@
-"use client";
+
 
 import { useMemo, useState } from "react";
 
@@ -36,7 +36,7 @@ type HeartbeatResponse = {
   };
 };
 
-const CONTROL_PLANE_BASE = process.env.NEXT_PUBLIC_CONTROL_PLANE_URL ?? "http://127.0.0.1:8787";
+const CONTROL_PLANE_BASE = import.meta.env.VITE_CONTROL_PLANE_URL ?? "http://127.0.0.1:8787";
 
 async function postJson<T>(path: string, payload: Record<string, unknown>) {
   const response = await fetch(`${CONTROL_PLANE_BASE}${path}`, {

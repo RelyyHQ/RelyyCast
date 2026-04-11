@@ -4,7 +4,7 @@ RelyyCast is an operator-focused control plane with a desktop streaming agent ar
 
 This repo currently includes:
 
-- Next.js UI shell
+- Vite + React UI shell
 - Desktop pairing + heartbeat API scaffolds
 - Standalone control-plane server scaffold
 - Local MP3 stream origin scaffold
@@ -26,7 +26,7 @@ npm run stack:dev
 Run pieces independently:
 
 ```bash
-npm run dev         # Next.js UI on :3000
+npm run dev         # Vite UI on :3000
 npm run api:dev     # standalone control-plane on :8787
 npm run stream:dev  # local stream origin on :8177
 npm run stream:ingest:tone # ffmpeg tone generator into /ingest
@@ -52,19 +52,19 @@ npm run lint
 
 The Agent tab in the UI calls the standalone control-plane server using:
 
-- `NEXT_PUBLIC_CONTROL_PLANE_URL` (defaults to `http://127.0.0.1:8787`)
+- `VITE_CONTROL_PLANE_URL` (defaults to `http://127.0.0.1:8787`)
 
 Example:
 
 ```bash
-set NEXT_PUBLIC_CONTROL_PLANE_URL=http://127.0.0.1:8787
+set VITE_CONTROL_PLANE_URL=http://127.0.0.1:8787
 npm run dev
 ```
 
 Optional stream origin URL override for the UI:
 
 ```bash
-set NEXT_PUBLIC_STREAM_ORIGIN_URL=http://127.0.0.1:8177
+set VITE_STREAM_ORIGIN_URL=http://127.0.0.1:8177
 npm run dev
 ```
 

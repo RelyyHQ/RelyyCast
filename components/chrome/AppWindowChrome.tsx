@@ -1,8 +1,13 @@
-"use client";
+
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { Minimize2, Moon, Sun, X } from "lucide-react";
+import {
+  app as nlApp,
+  window as nlWindow,
+  init as nlInit,
+} from "@neutralinojs/lib";
 
 type DetectedPlatform = "windows" | "macos" | "linux" | "unknown";
 
@@ -71,6 +76,37 @@ function hasNeutralinoGlobals(): boolean {
   return hasPort && hasToken;
 }
 
+// Module-level singleton so init() is only called once across StrictMode re-mounts.
+// __nlReady is set on window once the WebSocket "ready" event fires.
+let _nlInitStarted = false;
+const _nlReadyCallbacks: Array<() => void> = [];
+
+function ensureNlReady(onReady: () => void): void {
+  const w = window as Window & { __nlReady?: boolean };
+
+  if (w.__nlReady) {
+    onReady();
+    return;
+  }
+
+  _nlReadyCallbacks.push(onReady);
+
+  if (!_nlInitStarted) {
+    _nlInitStarted = true;
+
+    window.addEventListener("ready", function handleReady() {
+      window.removeEventListener("ready", handleReady);
+      w.__nlReady = true;
+      const callbacks = _nlReadyCallbacks.splice(0);
+      for (const cb of callbacks) {
+        cb();
+      }
+    });
+
+    nlInit();
+  }
+}
+
 export default function AppWindowChrome({
   appName,
   subtitle,
@@ -82,32 +118,11 @@ export default function AppWindowChrome({
 }: Readonly<AppWindowChromeProps>) {
   const [neutralinoReady, setNeutralinoReady] = useState(false);
   const [platform, setPlatform] = useState<DetectedPlatform>("unknown");
-
-  useEffect(() => {
-    setPlatform(detectPlatform());
-  }, []);
-  const neutralinoRef = useRef<Window["Neutralino"]>(undefined);
-  const initCalledRef = useRef(false);
   const dragRegionRegisteredRef = useRef(false);
   const dragFallbackEnabledRef = useRef(false);
 
-  const resolveNeutralinoRuntime = useCallback((): Window["Neutralino"] => {
-    if (typeof window === "undefined") {
-      return undefined;
-    }
-
-    const runtime = window.Neutralino;
-    if (runtime?.window && runtime?.app) {
-      neutralinoRef.current = runtime;
-      return runtime;
-    }
-
-    const cached = neutralinoRef.current;
-    if (cached?.window && cached?.app) {
-      return cached;
-    }
-
-    return undefined;
+  useEffect(() => {
+    setPlatform(detectPlatform());
   }, []);
 
   useEffect(() => {
@@ -118,37 +133,30 @@ export default function AppWindowChrome({
     let active = true;
     let timer = 0;
     let waitingLogged = false;
+    let connecting = false;
 
     function connectNeutralino(): void {
-      const nl = window.Neutralino;
-      if (!nl?.window || !nl?.app) {
+      if (!hasNeutralinoGlobals()) {
         if (!waitingLogged) {
           waitingLogged = true;
-          const globalsDetected = hasNeutralinoGlobals();
-          console.info(
-            `[AppWindowChrome] waiting for Neutralino runtime (globals detected: ${String(globalsDetected)}).`,
-          );
+          console.info("[AppWindowChrome] waiting for Neutralino globals.");
         }
         return;
       }
 
-      neutralinoRef.current = nl;
-
-      if (!initCalledRef.current) {
-        try {
-          nl.init?.();
-          initCalledRef.current = true;
-          console.info("[AppWindowChrome] Neutralino initialized.");
-        } catch (error) {
-          console.error("[AppWindowChrome] Neutralino init failed.", error);
-          return;
-        }
+      if (connecting) {
+        return;
       }
-
-      if (active) {
-        setNeutralinoReady(true);
-      }
+      connecting = true;
       window.clearInterval(timer);
+
+      console.info("[AppWindowChrome] Neutralino globals detected, initializing...");
+      ensureNlReady(() => {
+        if (active) {
+          console.info("[AppWindowChrome] Neutralino ready.");
+          setNeutralinoReady(true);
+        }
+      });
     }
 
     timer = window.setInterval(connectNeutralino, 250);
@@ -167,42 +175,35 @@ export default function AppWindowChrome({
       return;
     }
 
-    const runtime = resolveNeutralinoRuntime();
-    if (!runtime) {
-      console.error("[AppWindowChrome] Neutralino runtime unavailable during chrome setup.");
-      return;
-    }
-
-    async function setupWindowChrome(activeRuntime: NonNullable<Window["Neutralino"]>) {
+    async function setupWindowChrome() {
       console.info("[AppWindowChrome] applying window constraints and drag region.");
 
       try {
-        await activeRuntime.window.exitFullScreen();
+        await nlWindow.exitFullScreen();
       } catch (error) {
         console.warn("[AppWindowChrome] exitFullScreen failed.", error);
       }
 
       try {
-        await activeRuntime.window.setSize({
+        await nlWindow.setSize({
           width: 1024,
           height: 500,
           minWidth: 1024,
           minHeight: 500,
           maxWidth: 1024,
           maxHeight: 500,
-          resizable: false,
         });
       } catch (error) {
         console.warn("[AppWindowChrome] setSize failed.", error);
       }
 
       try {
-        await activeRuntime.window.setBorderless(true);
+        await nlWindow.setBorderless(true);
       } catch (error) {
         console.warn("[AppWindowChrome] setBorderless failed.", error);
       }
 
-      const exclusions: Array<string | HTMLElement> = [];
+      const exclude: Array<string | HTMLElement> = [];
       const exclusionIds = ["window-controls", "theme-toggle"];
       for (const id of exclusionIds) {
         const element = document.getElementById(id);
@@ -210,21 +211,21 @@ export default function AppWindowChrome({
           console.warn(`[AppWindowChrome] drag exclusion target missing: #${id}`);
           continue;
         }
-        exclusions.push(element);
+        exclude.push(element);
       }
 
       for (const element of document.querySelectorAll<HTMLElement>("[data-no-drag='true']")) {
-        if (!exclusions.includes(element)) {
-          exclusions.push(element);
+        if (!exclude.includes(element)) {
+          exclude.push(element);
         }
       }
 
       try {
-        await activeRuntime.window.setDraggableRegion("app-window-chrome", { exclusions });
+        await nlWindow.setDraggableRegion("app-window-chrome", { exclude });
         dragRegionRegisteredRef.current = true;
         dragFallbackEnabledRef.current = false;
         console.info(
-          `[AppWindowChrome] draggable region registered (exclusions: ${exclusions.length}).`,
+          `[AppWindowChrome] draggable region registered (exclusions: ${exclude.length}).`,
         );
       } catch (error) {
         dragRegionRegisteredRef.current = false;
@@ -236,52 +237,44 @@ export default function AppWindowChrome({
       }
     }
 
-    void setupWindowChrome(runtime);
+    void setupWindowChrome();
 
     return () => {
       if (!dragRegionRegisteredRef.current) {
         return;
       }
 
-      const runtime = resolveNeutralinoRuntime();
-      if (!runtime) {
-        console.warn("[AppWindowChrome] cannot unset draggable region; runtime unavailable.");
-        return;
-      }
-
-      void runtime.window
+      void nlWindow
         .unsetDraggableRegion("app-window-chrome")
         .then(() => {
           dragRegionRegisteredRef.current = false;
           console.info("[AppWindowChrome] draggable region removed.");
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.warn("[AppWindowChrome] unsetDraggableRegion failed.", error);
         });
     };
-  }, [neutralinoReady, platform, resolveNeutralinoRuntime]);
+  }, [neutralinoReady, platform]);
 
   const onMinimize = useCallback(async () => {
-    const nl = resolveNeutralinoRuntime();
-    if (!nl) {
-      console.warn("[AppWindowChrome] minimize ignored; Neutralino runtime unavailable.");
+    if (!neutralinoReady) {
+      console.warn("[AppWindowChrome] minimize ignored; Neutralino not ready.");
       return;
     }
 
     try {
       console.info("[AppWindowChrome] minimize requested.");
-      await nl.window.minimize();
+      await nlWindow.minimize();
     } catch (error) {
       console.error("[AppWindowChrome] minimize failed.", error);
     }
-  }, [resolveNeutralinoRuntime]);
+  }, [neutralinoReady]);
 
   const onClose = useCallback(async () => {
-    const nl = resolveNeutralinoRuntime();
-    if (nl) {
+    if (neutralinoReady) {
       try {
         console.info("[AppWindowChrome] close requested.");
-        await nl.app.exit();
+        await nlApp.exit();
         return;
       } catch (error) {
         console.error("[AppWindowChrome] close failed.", error);
@@ -294,7 +287,7 @@ export default function AppWindowChrome({
     } catch (error) {
       console.error("[AppWindowChrome] window.close fallback failed.", error);
     }
-  }, [resolveNeutralinoRuntime]);
+  }, [neutralinoReady]);
 
   const onHeaderMouseDown = useCallback(async (event: MouseEvent<HTMLElement>) => {
     if (!neutralinoReady || !dragFallbackEnabledRef.current || event.button !== 0) {
@@ -306,18 +299,12 @@ export default function AppWindowChrome({
       return;
     }
 
-    const nl = resolveNeutralinoRuntime();
-    if (!nl) {
-      console.warn("[AppWindowChrome] beginDrag fallback unavailable; runtime missing.");
-      return;
-    }
-
     try {
-      await nl.window.beginDrag();
+      await nlWindow.beginDrag();
     } catch (error) {
       console.error("[AppWindowChrome] beginDrag fallback failed.", error);
     }
-  }, [neutralinoReady, resolveNeutralinoRuntime]);
+  }, [neutralinoReady]);
 
   return (
     <header
