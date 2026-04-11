@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RelyyCast
 
-## Getting Started
+RelyyCast is an operator-focused control plane with a desktop streaming agent architecture.
 
-First, run the development server:
+This repo currently includes:
+
+- Next.js UI shell
+- Desktop pairing + heartbeat API scaffolds
+- Standalone control-plane server scaffold
+- Local MP3 stream origin scaffold
+
+## Development commands
+
+Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run UI + standalone API + stream origin together:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run stack:dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run pieces independently:
 
-## Learn More
+```bash
+npm run dev         # Next.js UI on :3000
+npm run api:dev     # standalone control-plane on :8787
+npm run stream:dev  # local stream origin on :8177
+npm run stream:ingest:tone # ffmpeg tone generator into /ingest
+```
 
-To learn more about Next.js, take a look at the following resources:
+Build:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Lint:
 
-## Deploy on Vercel
+```bash
+npm run lint
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Control-plane URL for UI
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Agent tab in the UI calls the standalone control-plane server using:
+
+- `NEXT_PUBLIC_CONTROL_PLANE_URL` (defaults to `http://127.0.0.1:8787`)
+
+Example:
+
+```bash
+set NEXT_PUBLIC_CONTROL_PLANE_URL=http://127.0.0.1:8787
+npm run dev
+```
+
+Optional stream origin URL override for the UI:
+
+```bash
+set NEXT_PUBLIC_STREAM_ORIGIN_URL=http://127.0.0.1:8177
+npm run dev
+```
+
+## Current scaffold endpoints
+
+Standalone control-plane server (`npm run api:dev`):
+
+- `GET /health`
+- `POST /api/desktop/pair/start`
+- `POST /api/desktop/pair/approve`
+- `POST /api/desktop/pair/status`
+- `POST /api/desktop/heartbeat`
+- `GET /api/desktop/heartbeat?agentId=...`
+
+Local stream origin (`npm run stream:dev`):
+
+- `GET /health`
+- `GET /live.mp3`
+- `POST /ingest`
+
+FFmpeg ingest helper (`npm run stream:ingest:tone`):
+
+- Sends a continuous generated tone as MP3 into `POST /ingest`
+- Override destination with `RELYY_STREAM_INGEST_URL`
+- Override ffmpeg path with `FFMPEG_BIN`

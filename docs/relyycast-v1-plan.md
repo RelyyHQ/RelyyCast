@@ -11,7 +11,7 @@ Last updated: 2026-04-10
 - [x] Verified lint and a webpack production build
 - [x] Compacted the UI into an Icecast-sized dark window with tabs and tighter copy
 - [x] Collapsed the web app into one screen and redirected legacy routes to root
-- [x] Added an Electron desktop shell scaffold that loads the same screen
+- [x] Added a desktop shell scaffold that loads the same screen
 - [ ] Add desktop pairing and heartbeat scaffolds
 - [ ] Add server-only provisioning, billing, and Cloudflare integrations
 
@@ -19,7 +19,7 @@ Current stop point:
 
 - The public landing, login, and station shells are live.
 - The app now opens as one compact screen from the web root.
-- Electron is scaffolded, but the dependency is not installed in this workspace yet.
+- A standalone desktop agent architecture is scaffolded for continued implementation.
 - Next pass should wire auth, station CRUD, and desktop pairing data flows.
 
 Verification note:
@@ -61,7 +61,7 @@ That is acceptable for v1 as long as the UI is honest about it.
 - One public MP3 endpoint per station: `/live.mp3`.
 - A Relyy-owned default hostname, for example `station-slug.stream.relyycast.com`.
 - Desktop pairing flow.
-- Electron desktop app that:
+- Desktop app that:
   - hosts a local HTTP MP3 stream origin,
   - captures one selected audio input,
   - encodes audio to MP3,
@@ -175,7 +175,7 @@ Use your Cloudflare account for:
 - Default DNS hostnames in your zone
 - Future custom hostnames for paid domains
 
-### 4. Electron desktop app
+### 4. Desktop app
 
 The desktop app should be an agent, not a full browser-first app.
 
@@ -340,7 +340,7 @@ Store locally:
 - last selected audio device
 - bitrate preset
 
-Use Electron secure storage when available and fall back carefully on Linux.
+Use OS-backed secure storage when available and fall back carefully on Linux.
 
 ## Permissions and OS Requirements
 
@@ -525,7 +525,7 @@ Do not introduce a full monorepo before the first milestone ships.
 Instead:
 
 - keep the web app in the current root
-- add `desktop/` for Electron when implementation starts
+- add `desktop/` when implementation starts
 - add a small shared `contracts/` folder only if types begin drifting
 
 ## Billing Plan
@@ -568,7 +568,7 @@ Keep billing simple:
 
 ### Milestone 3: Desktop pairing and local origin
 
-- Electron shell
+- desktop shell
 - pairing code flow
 - local `/health`
 - local `/live.mp3`
@@ -609,7 +609,7 @@ This keeps the hardest integration points isolated and lets you test real value 
 1. Custom domains are not a small add-on. They are a separate Cloudflare product decision.
 2. Desktop upload bandwidth will define listener capacity.
 3. System audio capture across OSes is much harder than microphone or line-in capture.
-4. Shipping unsigned Electron builds will create trust friction fast.
+4. Shipping unsigned desktop builds will create trust friction fast.
 5. FFmpeg distribution and licensing need to be checked before release packaging.
 
 ## Recommended Decision for Us Right Now
@@ -631,4 +631,4 @@ That is the smallest version that is still real, demoable, and commercially alig
 - Cloudflare Tunnel API and DNS routing docs
 - Cloudflare for SaaS custom hostnames docs
 - Supabase Next.js SSR auth docs
-- Electron media permissions and secure storage docs
+- Desktop media permissions and secure storage docs

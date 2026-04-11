@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AgentOperationsPanel from "@/components/agent-operations-panel";
 import AppStatusFooter from "@/components/chrome/AppStatusFooter";
 import AppWindowChrome from "@/components/chrome/AppWindowChrome";
 
-type TabId = "overview" | "stream" | "agent" | "domain" | "log" | any;
+type TabId = "overview" | "stream" | "agent" | "domain" | "log";
 
 const tabs: Array<{ id: TabId; label: string; tip: string }> = [
   {
@@ -34,13 +35,6 @@ const tabs: Array<{ id: TabId; label: string; tip: string }> = [
   },
 ];
 
-const stats = [
-  { label: "Public URL", value: "https://wxyz.stream.relyycast.com/live.mp3" },
-  { label: "Default host", value: "wxyz.stream.relyycast.com" },
-  { label: "Input", value: "BlackHole 2ch" },
-  { label: "Bitrate", value: "128 kbps stereo" },
-];
-
 const events = [
   "Desktop approved and config delivered.",
   "cloudflared token rotated successfully.",
@@ -52,6 +46,15 @@ export function StationConsole() {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [darkMode, setDarkMode] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const [streamHealth, setStreamHealth] = useState<{
+    listenerCount: number;
+    bytesIn: number;
+    chunkCount: number;
+    lastChunkAt: string | null;
+  } | null>(null);
+
+  const streamOrigin = process.env.NEXT_PUBLIC_STREAM_ORIGIN_URL ?? "http://127.0.0.1:8177";
+  const streamUrl = `${streamOrigin}/live.mp3`;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -62,6 +65,49 @@ export function StationConsole() {
       window.clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function readHealth() {
+      try {
+        const response = await fetch(`${streamOrigin}/health`, { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const json = (await response.json()) as {
+          listenerCount: number;
+          bytesIn: number;
+          chunkCount: number;
+          lastChunkAt: string | null;
+        };
+
+        if (alive) {
+          setStreamHealth({
+            listenerCount: json.listenerCount,
+            bytesIn: json.bytesIn,
+            chunkCount: json.chunkCount,
+            lastChunkAt: json.lastChunkAt,
+          });
+        }
+      } catch {
+        if (alive) {
+          setStreamHealth(null);
+        }
+      }
+    }
+
+    void readHealth();
+    const timer = window.setInterval(() => {
+      void readHealth();
+    }, 5000);
+
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [streamOrigin]);
 
   const currentTimeLabel = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const currentDateLabel = now.toLocaleDateString([], {
@@ -132,14 +178,14 @@ export function StationConsole() {
                 title={tabMeta[activeTab].title}
                 body={tabMeta[activeTab].body}
               >
-                {renderTab(activeTab)}
+                {renderTab(activeTab, { streamUrl, streamHealth })}
               </Panel>
             </section>
 
             <aside className="space-y-2.5">
               <Panel eyebrow="State" title="Core values" body="">
                 <div className="grid gap-1.5">
-                  {stats.map((item) => (
+                  {statsForView(streamUrl).map((item) => (
                     <ValueRow
                       key={item.label}
                       label={item.label}
@@ -194,7 +240,18 @@ const tabMeta: Record<TabId, { eyebrow: string; title: string; body: string }> =
   },
 };
 
-function renderTab(tab: TabId) {
+function renderTab(
+  tab: TabId,
+  context: {
+    streamUrl: string;
+    streamHealth: {
+      listenerCount: number;
+      bytesIn: number;
+      chunkCount: number;
+      lastChunkAt: string | null;
+    } | null;
+  },
+) {
   switch (tab) {
     case "overview":
       return (
@@ -219,22 +276,69 @@ function renderTab(tab: TabId) {
             value="8177"
             tip="The local MP3 origin listens here on the desktop machine."
           />
+          <MiniMetric
+            label="Chunks in"
+            value={context.streamHealth ? String(context.streamHealth.chunkCount) : "offline"}
+            tip="How many encoded chunks reached the local stream origin."
+          />
+          <MiniMetric
+            label="Listeners"
+            value={context.streamHealth ? String(context.streamHealth.listenerCount) : "offline"}
+            tip="Current active listeners on the local stream origin."
+          />
         </div>
       );
     case "stream":
       return (
         <div className="space-y-1.5">
-          <ValueRow label="Public URL" value="https://wxyz.stream.relyycast.com/live.mp3" />
+          <ValueRow label="Stream URL" value={context.streamUrl} />
           <div className="grid gap-1.5 sm:grid-cols-3">
-            <ActionButton tip="Copy the public MP3 URL to your clipboard.">
+            <ActionButton
+              tip="Copy the public MP3 URL to your clipboard."
+              onClick={() => {
+                void navigator.clipboard.writeText(context.streamUrl);
+              }}
+            >
               Copy URL
             </ActionButton>
-            <ActionButton tip="Open the URL in a new player or browser tab.">
+            <ActionButton
+              tip="Open the URL in a new player or browser tab."
+              onClick={() => {
+                window.open(context.streamUrl, "_blank", "noopener,noreferrer");
+              }}
+            >
               Open player
             </ActionButton>
-            <ActionButton tip="Send a quick playback request against the live stream.">
+            <ActionButton
+              tip="Read local health to verify the stream origin is reachable."
+              onClick={() => {
+                window.open(`${context.streamUrl.replace("/live.mp3", "")}/health`, "_blank", "noopener,noreferrer");
+              }}
+            >
               Test stream
             </ActionButton>
+          </div>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            <ValueRow
+              label="Listeners"
+              value={context.streamHealth ? String(context.streamHealth.listenerCount) : "unavailable"}
+            />
+            <ValueRow
+              label="Chunks received"
+              value={context.streamHealth ? String(context.streamHealth.chunkCount) : "unavailable"}
+            />
+            <ValueRow
+              label="Bytes ingested"
+              value={context.streamHealth ? String(context.streamHealth.bytesIn) : "unavailable"}
+            />
+            <ValueRow
+              label="Last chunk"
+              value={
+                context.streamHealth?.lastChunkAt
+                  ? new Date(context.streamHealth.lastChunkAt).toLocaleTimeString()
+                  : "unavailable"
+              }
+            />
           </div>
           <div className="rounded border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2.5 py-2 text-[12px] leading-5 text-[hsl(var(--theme-muted))]">
             The stream stays public while the encoder and tunnel run locally. If the desktop
@@ -243,30 +347,7 @@ function renderTab(tab: TabId) {
         </div>
       );
     case "agent":
-      return (
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          <MiniMetric
-            label="Pairing code"
-            value="RLY-4821"
-            tip="Short-lived code used to approve the desktop agent."
-          />
-          <MiniMetric
-            label="Device"
-            value="MacBook Pro"
-            tip="The paired machine currently hosting the stream origin."
-          />
-          <MiniMetric
-            label="Bitrate"
-            value="128 kbps stereo"
-            tip="Conservative default for day-one streaming."
-          />
-          <MiniMetric
-            label="Permissions"
-            value="Mic granted"
-            tip="Microphone access is required for the selected source."
-          />
-        </div>
-      );
+      return <AgentOperationsPanel />;
     case "domain":
       return (
         <div className="space-y-1.5">
@@ -369,10 +450,12 @@ function MiniMetric({
 function ActionButton({
   children,
   tip,
+  onClick,
   size = "default",
 }: Readonly<{
   children: React.ReactNode;
   tip: string;
+  onClick?: () => void;
   size?: "default" | "sm";
 }>) {
   const sizeClass =
@@ -384,10 +467,20 @@ function ActionButton({
     <button
       type="button"
       title={tip}
+      onClick={onClick}
       className={`inline-flex items-center justify-center rounded-sm border border-[hsl(var(--theme-border))] bg-white font-semibold transition-colors hover:bg-slate-50 dark:bg-[hsl(var(--theme-surface-alt))] dark:hover:bg-white/5 ${sizeClass}`}
     >
       {children}
     </button>
   );
+}
+
+function statsForView(streamUrl: string) {
+  return [
+    { label: "Stream URL", value: streamUrl },
+    { label: "Default host", value: "wxyz.stream.relyycast.com" },
+    { label: "Input", value: "BlackHole 2ch" },
+    { label: "Bitrate", value: "128 kbps stereo" },
+  ];
 }
 
