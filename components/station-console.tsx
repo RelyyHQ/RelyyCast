@@ -5,7 +5,59 @@ import AgentOperationsPanel from "@/components/agent-operations-panel";
 import AppStatusFooter from "@/components/chrome/AppStatusFooter";
 import AppWindowChrome from "@/components/chrome/AppWindowChrome";
 
-type TabId = "overview" | "stream" | "agent" | "domain" | "log";
+type TabId = "overview" | "stream" | "agent" | "settings" | "log";
+
+type ServerConfig = {
+  inputUrl: string;
+  stationName: string;
+  genre: string;
+  description: string;
+  bitrate: string;
+  ffmpegPath: string;
+};
+
+const SETTINGS_STORAGE_KEY = "relyycast:server-config";
+
+const DEFAULT_SERVER_CONFIG: ServerConfig = {
+  inputUrl: "http://127.0.0.1:4850/live.mp3",
+  stationName: "RelyyCast Dev Stream",
+  genre: "Various",
+  description: "Local FFmpeg test source",
+  bitrate: "128k",
+  ffmpegPath: "",
+};
+
+function normalizeServerConfig(input: unknown): ServerConfig {
+  const source = input && typeof input === "object" ? (input as Partial<ServerConfig>) : {};
+  return {
+    inputUrl: typeof source.inputUrl === "string" ? source.inputUrl : DEFAULT_SERVER_CONFIG.inputUrl,
+    stationName: typeof source.stationName === "string" ? source.stationName : DEFAULT_SERVER_CONFIG.stationName,
+    genre: typeof source.genre === "string" ? source.genre : DEFAULT_SERVER_CONFIG.genre,
+    description: typeof source.description === "string" ? source.description : DEFAULT_SERVER_CONFIG.description,
+    bitrate: typeof source.bitrate === "string" ? source.bitrate : DEFAULT_SERVER_CONFIG.bitrate,
+    ffmpegPath: typeof source.ffmpegPath === "string" ? source.ffmpegPath : DEFAULT_SERVER_CONFIG.ffmpegPath,
+  };
+}
+
+function readStoredConfig(): ServerConfig | null {
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    return normalizeServerConfig(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredConfig(config: ServerConfig) {
+  try {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(config));
+  } catch {
+    // Ignore storage write errors in private/incognito contexts.
+  }
+}
 
 const tabs: Array<{ id: TabId; label: string; tip: string }> = [
   {
@@ -24,9 +76,9 @@ const tabs: Array<{ id: TabId; label: string; tip: string }> = [
     tip: "Desktop pairing and heartbeat status.",
   },
   {
-    id: "domain",
-    label: "Domain",
-    tip: "Hostname status and the paid custom-domain gate.",
+    id: "settings",
+    label: "Settings",
+    tip: "Server input, metadata, and FFmpeg runtime options.",
   },
   {
     id: "log",
@@ -52,9 +104,13 @@ export function StationConsole() {
     chunkCount: number;
     lastChunkAt: string | null;
   } | null>(null);
+  const [serverConfig, setServerConfig] = useState<ServerConfig>(DEFAULT_SERVER_CONFIG);
+  const [settingsStatus, setSettingsStatus] = useState("Waiting for config sync.");
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  const streamOrigin = import.meta.env.VITE_STREAM_ORIGIN_URL ?? "http://127.0.0.1:8177";
-  const streamUrl = `${streamOrigin}/live.mp3`;
+  const serverUrl = import.meta.env.VITE_SERVER_URL ?? "http://127.0.0.1:8177";
+  const streamUrl = `${serverUrl}/live.mp3`;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -71,7 +127,7 @@ export function StationConsole() {
 
     async function readHealth() {
       try {
-        const response = await fetch(`${streamOrigin}/health`, { cache: "no-store" });
+        const response = await fetch(`${serverUrl}/health`, { cache: "no-store" });
         if (!response.ok) {
           return;
         }
@@ -107,7 +163,95 @@ export function StationConsole() {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [streamOrigin]);
+  }, [serverUrl]);
+
+  useEffect(() => {
+    let alive = true;
+    const localConfig = readStoredConfig();
+    if (localConfig) {
+      setServerConfig(localConfig);
+      setSettingsStatus("Loaded local settings.");
+    }
+
+    async function syncConfigFromServer() {
+      try {
+        const response = await fetch(`${serverUrl}/api/config`, { cache: "no-store" });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const message = typeof (json as { error?: unknown }).error === "string"
+            ? (json as { error: string }).error
+            : `Config sync failed with status ${response.status}`;
+          throw new Error(message);
+        }
+
+        const normalized = normalizeServerConfig(json);
+        if (!alive) {
+          return;
+        }
+
+        setServerConfig(normalized);
+        writeStoredConfig(normalized);
+        setSettingsStatus("Synced with server config.");
+        setSettingsError(null);
+      } catch (error) {
+        if (!alive) {
+          return;
+        }
+        setSettingsStatus(localConfig ? "Using local settings." : "No local settings found.");
+        setSettingsError(error instanceof Error ? error.message : "Unable to sync config.");
+      }
+    }
+
+    void syncConfigFromServer();
+
+    return () => {
+      alive = false;
+    };
+  }, [serverUrl]);
+
+  function updateServerConfig(field: keyof ServerConfig, value: string) {
+    setServerConfig((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  }
+
+  async function saveServerConfig() {
+    const payload = normalizeServerConfig(serverConfig);
+    writeStoredConfig(payload);
+    setIsSavingSettings(true);
+    setSettingsStatus("Saving settings...");
+    setSettingsError(null);
+
+    try {
+      const response = await fetch(`${serverUrl}/api/config`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = typeof (json as { error?: unknown }).error === "string"
+          ? (json as { error: string }).error
+          : `Config save failed with status ${response.status}`;
+        throw new Error(message);
+      }
+
+      const normalized = normalizeServerConfig(json);
+      setServerConfig(normalized);
+      writeStoredConfig(normalized);
+      setSettingsStatus("Saved to localStorage and server.");
+      setSettingsError(null);
+    } catch (error) {
+      setSettingsStatus("Save failed.");
+      setSettingsError(error instanceof Error ? error.message : "Unable to save config.");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }
 
   const currentTimeLabel = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const currentDateLabel = now.toLocaleDateString([], {
@@ -133,20 +277,6 @@ export function StationConsole() {
         />
 
         <div className="flex-1 overflow-hidden">
-          {/* <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--theme-border))] px-2.5 py-1.5">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <ActionButton tip="Copy the sample stream URL." size="sm">
-                Copy URL
-              </ActionButton>
-              <ActionButton tip="Preview the stream in a player." size="sm">
-                Test stream
-              </ActionButton>
-              <ActionButton tip="Pair the desktop agent after login." size="sm">
-                Pair agent
-              </ActionButton>
-            </div>
-          </div> */}
-
           <nav className="flex flex-wrap items-center gap-1 border-b border-[hsl(var(--theme-border))] px-2 py-1.5">
             {tabs.map((tab) => {
               const active = activeTab === tab.id;
@@ -171,14 +301,25 @@ export function StationConsole() {
 
           </nav>
 
-          <div className="grid gap-2.5 p-2.5 lg:grid-cols-[1fr_485px]">
+          <div className="grid gap-2.5 p-2.5 grid-cols-[1fr_485px]">
             <section className="space-y-2.5">
               <Panel
                 eyebrow={tabMeta[activeTab].eyebrow}
                 title={tabMeta[activeTab].title}
                 body={tabMeta[activeTab].body}
               >
-                {renderTab(activeTab, { streamUrl, streamHealth })}
+                {renderTab(activeTab, {
+                  streamUrl,
+                  streamHealth,
+                  serverConfig,
+                  settingsStatus,
+                  settingsError,
+                  isSavingSettings,
+                  onSettingsFieldChange: updateServerConfig,
+                  onSaveSettings: () => {
+                    void saveServerConfig();
+                  },
+                })}
               </Panel>
             </section>
 
@@ -204,7 +345,7 @@ export function StationConsole() {
           badges={[
             { label: "Live", value: "On" },
             { label: "Agent", value: "Online" },
-            { label: "Domain", value: "Default" },
+            { label: "Settings", value: "Loaded" },
           ]}
         />
       </section>
@@ -212,11 +353,11 @@ export function StationConsole() {
   );
 }
 
-const tabMeta: Record<TabId, { eyebrow: string; title: string; body: string }> = {
+const tabMeta: Record<TabId, { eyebrow: string; title: string; body: string | null }> = {
   overview: {
     eyebrow: "Overview",
     title: "Station at a glance",
-    body: "Live bridge summary.",
+    body: null,
   },
   stream: {
     eyebrow: "Stream",
@@ -228,10 +369,10 @@ const tabMeta: Record<TabId, { eyebrow: string; title: string; body: string }> =
     title: "Desktop pairing and heartbeat",
     body: "Pairing and health.",
   },
-  domain: {
-    eyebrow: "Domain",
-    title: "Hostname and plan gate",
-    body: "Hostname and gate.",
+  settings: {
+    eyebrow: "Settings",
+    title: "Server runtime configuration",
+    body: "Local cache first, then sync to server config.",
   },
   log: {
     eyebrow: "Log",
@@ -250,6 +391,12 @@ function renderTab(
       chunkCount: number;
       lastChunkAt: string | null;
     } | null;
+    serverConfig: ServerConfig;
+    settingsStatus: string;
+    settingsError: string | null;
+    isSavingSettings: boolean;
+    onSettingsFieldChange: (field: keyof ServerConfig, value: string) => void;
+    onSaveSettings: () => void;
   },
 ) {
   switch (tab) {
@@ -348,14 +495,68 @@ function renderTab(
       );
     case "agent":
       return <AgentOperationsPanel />;
-    case "domain":
+    case "settings":
       return (
         <div className="space-y-1.5">
-          <ValueRow label="Default hostname" value="wxyz.stream.relyycast.com" />
-          <ValueRow label="Custom domain" value="Locked on free plan" />
-          <ValueRow label="SSL readiness" value="Ready for default host" />
+          <ConfigField
+            label="Input URL"
+            value={context.serverConfig.inputUrl}
+            placeholder="http://127.0.0.1:4850/live.mp3"
+            onChange={(value) => {
+              context.onSettingsFieldChange("inputUrl", value);
+            }}
+          />
+          <ConfigField
+            label="Station Name"
+            value={context.serverConfig.stationName}
+            placeholder="RelyyCast Dev Stream"
+            onChange={(value) => {
+              context.onSettingsFieldChange("stationName", value);
+            }}
+          />
+          <ConfigField
+            label="Genre"
+            value={context.serverConfig.genre}
+            placeholder="Various"
+            onChange={(value) => {
+              context.onSettingsFieldChange("genre", value);
+            }}
+          />
+          <ConfigField
+            label="Description"
+            value={context.serverConfig.description}
+            placeholder="Local FFmpeg test source"
+            onChange={(value) => {
+              context.onSettingsFieldChange("description", value);
+            }}
+          />
+          <ConfigField
+            label="Bitrate"
+            value={context.serverConfig.bitrate}
+            placeholder="128k"
+            onChange={(value) => {
+              context.onSettingsFieldChange("bitrate", value);
+            }}
+          />
+          <ConfigField
+            label="FFmpeg Path"
+            value={context.serverConfig.ffmpegPath}
+            placeholder="C:\\ffmpeg\\bin\\ffmpeg.exe"
+            onChange={(value) => {
+              context.onSettingsFieldChange("ffmpegPath", value);
+            }}
+          />
+          <button
+            type="button"
+            onClick={context.onSaveSettings}
+            disabled={context.isSavingSettings}
+            className="h-8 rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] text-[11px] font-semibold hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-white/5"
+          >
+            {context.isSavingSettings ? "Saving..." : "Save settings"}
+          </button>
           <div className="rounded border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2.5 py-2 text-[12px] leading-5 text-[hsl(var(--theme-muted))]">
-            Custom domains stay visible in the UI, but the paid SaaS route is a later step.
+            <p>{context.settingsStatus}</p>
+            {context.settingsError ? <p className="text-red-500">Error: {context.settingsError}</p> : null}
           </div>
         </div>
       );
@@ -388,7 +589,7 @@ function Panel({
 }: Readonly<{
   eyebrow: string;
   title: string;
-  body: string;
+  body: string | null;
   children: React.ReactNode;
 }>) {
   return (
@@ -424,6 +625,35 @@ function ValueRow({
   );
 }
 
+function ConfigField({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: Readonly<{
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}>) {
+  return (
+    <label className="grid gap-1 rounded border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2.5 py-2">
+      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-[hsl(var(--theme-muted))]">
+        {label}
+      </span>
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => {
+          onChange(event.target.value);
+        }}
+        className="h-8 rounded-sm border border-[hsl(var(--theme-border))] bg-white px-2 text-[12px] leading-5 outline-none ring-0 transition-colors focus:border-[hsl(var(--theme-primary))] dark:bg-[hsl(var(--theme-surface))]"
+      />
+    </label>
+  );
+}
+
 function MiniMetric({
   label,
   value,
@@ -451,24 +681,17 @@ function ActionButton({
   children,
   tip,
   onClick,
-  size = "default",
 }: Readonly<{
   children: React.ReactNode;
   tip: string;
   onClick?: () => void;
-  size?: "default" | "sm";
 }>) {
-  const sizeClass =
-    size === "sm"
-      ? "h-7 px-2.5 text-[10px]"
-      : "h-8 px-3 text-[11px]";
-
   return (
     <button
       type="button"
       title={tip}
       onClick={onClick}
-      className={`inline-flex items-center justify-center rounded-sm border border-[hsl(var(--theme-border))] bg-white font-semibold transition-colors hover:bg-slate-50 dark:bg-[hsl(var(--theme-surface-alt))] dark:hover:bg-white/5 ${sizeClass}`}
+      className="inline-flex h-8 items-center justify-center rounded-sm border border-[hsl(var(--theme-border))] bg-white px-3 text-[11px] font-semibold transition-colors hover:bg-slate-50 dark:bg-[hsl(var(--theme-surface-alt))] dark:hover:bg-white/5"
     >
       {children}
     </button>

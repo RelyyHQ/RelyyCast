@@ -36,10 +36,10 @@ type HeartbeatResponse = {
   };
 };
 
-const CONTROL_PLANE_BASE = import.meta.env.VITE_CONTROL_PLANE_URL ?? "http://127.0.0.1:8787";
+const SERVER_BASE = import.meta.env.VITE_SERVER_URL ?? "http://127.0.0.1:8177";
 
 async function postJson<T>(path: string, payload: Record<string, unknown>) {
-  const response = await fetch(`${CONTROL_PLANE_BASE}${path}`, {
+  const response = await fetch(`${SERVER_BASE}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -181,7 +181,7 @@ export default function AgentOperationsPanel() {
       </div>
 
       <div className="rounded border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2.5 py-2 text-[12px] leading-5 text-[hsl(var(--theme-muted))]">
-        <p>API base: {CONTROL_PLANE_BASE}</p>
+        <p>API base: {SERVER_BASE}</p>
         <p>{healthLabel}</p>
         {pairingExpiry ? <p>Pairing expires: {new Date(pairingExpiry).toLocaleTimeString()}</p> : null}
         {lastError ? <p className="text-red-500">Error: {lastError}</p> : null}

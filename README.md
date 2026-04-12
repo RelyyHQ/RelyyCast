@@ -29,7 +29,7 @@ Run pieces independently:
 npm run dev         # Vite UI on :3000
 npm run api:dev     # standalone control-plane on :8787
 npm run stream:dev  # local stream origin on :8177
-npm run stream:ingest:tone # ffmpeg tone generator into /ingest
+npm run stream:ingest:tone # ffmpeg tone generator into a mount (default /live.mp3)
 npm run app:view    # open :3000 in app-style window (Edge/Chrome app mode on Windows)
 npm run dev:app     # run app-style view; reuses existing :3000 dev server if already running
 npm run neutralino:update # download Neutralino runtime binary
@@ -82,11 +82,20 @@ Standalone control-plane server (`npm run api:dev`):
 Local stream origin (`npm run stream:dev`):
 
 - `GET /health`
-- `GET /live.mp3`
-- `POST /ingest`
+- `GET /api/mounts`
+- `GET|HEAD /<mount>` (examples: `/station1`, `/live`, `/stream`, `/live.mp3`)
+- `SOURCE|PUT|POST /<mount>` (source publishing)
+- `GET|POST /admin/metadata?mount=/live&song=Artist+-+Track`
+- `POST /ingest?mount=/live` (legacy helper endpoint; forwards to source handler)
 
 FFmpeg ingest helper (`npm run stream:ingest:tone`):
 
-- Sends a continuous generated tone as MP3 into `POST /ingest`
-- Override destination with `RELYY_STREAM_INGEST_URL`
+- Sends audio into a source mount (defaults to synthetic tone)
+- Default publish target is `SOURCE http://127.0.0.1:8177/live.mp3`
+- Uses `FFMPEG_BIN` or `RELYY_RADIO_FFMPEG_PATH` when set
+- Override destination with `RELYY_STREAM_INGEST_URL`, or use `RELYY_STREAM_BASE_URL` + `RELYY_STREAM_MOUNT`
+- Override source method with `RELYY_STREAM_SOURCE_METHOD` (`SOURCE`, `PUT`, or `POST`)
+- Relay a client stream URL by setting `RELYY_STREAM_INPUT_URL` (for example `http://127.0.0.1:4850/live.mp3`)
+- Force synthetic tone mode with `RELYY_STREAM_INPUT_MODE=tone`
+- Set source auth using `RELYY_STREAM_SOURCE_USER` + `RELYY_STREAM_SOURCE_PASSWORD`
 - Override ffmpeg path with `FFMPEG_BIN`

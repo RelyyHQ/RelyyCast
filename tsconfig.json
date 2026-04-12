@@ -22,7 +22,6 @@
     "src/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
-    "lib/**/*.ts",
     "types/**/*.ts",
     "vite.config.ts"
   ],

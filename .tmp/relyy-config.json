@@ -1,0 +1,8 @@
+{
+  "inputUrl": "http://127.0.0.1:4850/live.mp3",
+  "stationName": "RelyyCast Dev Stream",
+  "genre": "Various",
+  "description": "Local FFmpeg test source",
+  "bitrate": "128k",
+  "ffmpegPath": ""
+}
