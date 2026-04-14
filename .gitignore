@@ -18,6 +18,10 @@
 /out/
 /mediamtx/win
 /mediamtx/mac
+/dist/**
+
+/cloudflared/win
+/cloudflared/mac
 # production
 /build
 /runtime/bun-mp3-helper/dist/

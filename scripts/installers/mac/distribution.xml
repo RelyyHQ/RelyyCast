@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+
+    <title>RelyyCast</title>
+    <organization>com.relyycast</organization>
+
+    <!-- Allow install to the system volume only -->
+    <domains enable_localSystem="true" enable_currentUserHome="false"/>
+    <options customize="allow" require-scripts="false" rootVolumeOnly="true"/>
+
+    <!-- Wizard pages -->
+    <welcome    file="welcome.html"  mime-type="text/html"/>
+    <license    file="LICENSE"       mime-type="text/plain"/>
+
+    <!-- Component tree shown on "Installation Type" page -->
+    <choices-outline>
+        <line choice="com.relyycast.app.core"/>
+        <line choice="com.relyycast.app.mp3helper"/>
+    </choices-outline>
+
+    <!-- Core application — always selected, cannot be deselected -->
+    <choice id="com.relyycast.app.core"
+            title="RelyyCast"
+            description="The RelyyCast application, MediaMTX streaming server, and Cloudflare Tunnel binary."
+            enabled="false"
+            selected="true"
+            visible="true">
+        <pkg-ref id="com.relyycast.app.core"/>
+    </choice>
+
+    <!-- Optional: MP3 Helper -->
+    <choice id="com.relyycast.app.mp3helper"
+            title="MP3 Helper"
+            description="Enables real-time MP3 streaming output. Optional — only install this if you plan to use MP3 audio format."
+            start_selected="false">
+        <pkg-ref id="com.relyycast.app.mp3helper"/>
+    </choice>
+
+    <pkg-ref id="com.relyycast.app.core"      version="0.1.0" onConclusion="none">RelyyCast-core.pkg</pkg-ref>
+    <pkg-ref id="com.relyycast.app.mp3helper" version="0.1.0" onConclusion="none">RelyyCast-mp3helper.pkg</pkg-ref>
+
+</installer-gui-script>

@@ -1,3 +1,0 @@
-[ingest] spawning C:\ffmpeg\bin\ffmpeg.exe -hide_banner -loglevel warning -re -f lavfi -i sine=frequency=880:sample_rate=44100 -ac 2 -ar 44100 -b:a 128k -f mp3 pipe:1
-[ingest] streaming to http://127.0.0.1:8177/live.mp3 with method SOURCE
-[ingest] server response 409: {"ok":false,"error":"source already connected on /live.mp3"}

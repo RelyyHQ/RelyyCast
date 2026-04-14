@@ -297,6 +297,7 @@ export function StationConsole() {
   const streamUrl = publicOrigin ? `${publicOrigin}${mountPath}` : localStreamUrl;
   const helperStatusUrl = `${localOrigin}/_status`;
   const fallbackHlsUrl = buildHlsUrl(relayPath);
+  const publicHlsUrl = publicOrigin ? `${publicOrigin}/${relayPath}/index.m3u8` : fallbackHlsUrl;
 
   const streamHealth = useMemo<StreamHealth | null>(() => {
     if (!runtimeState && !relayMetrics) {
@@ -306,15 +307,15 @@ export function StationConsole() {
     return {
       listenerCount: relayMetrics?.listenerCount ?? 0,
       relayPathReady: relayMetrics?.relayPathReady ?? false,
-      hlsUrl: fallbackHlsUrl,
+      hlsUrl: publicHlsUrl,
       relayBytesReceived: relayMetrics?.relayBytesReceived ?? 0,
       relay: normalizeProcessRuntime(runtimeState?.processes.mediamtx),
       ingest: normalizeProcessRuntime(runtimeState?.processes.ffmpegIngest),
       mp3Bridge: normalizeProcessRuntime(runtimeState?.processes.ffmpegMp3Bridge),
     };
-  }, [fallbackHlsUrl, relayMetrics, runtimeState]);
+  }, [publicHlsUrl, relayMetrics, runtimeState]);
 
-  const hlsUrl = streamHealth?.hlsUrl || fallbackHlsUrl;
+  const hlsUrl = streamHealth?.hlsUrl || publicHlsUrl;
 
   useEffect(() => {
     const timer = window.setInterval(() => {

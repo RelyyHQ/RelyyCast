@@ -1,5 +1,5 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { chmod, cp, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -11,7 +11,7 @@ const BUILD_BIN_ROOT = path.resolve(BUILD_ROOT, "bin");
 const MP3_HELPER_DIST_ROOT = path.resolve(REPO_ROOT, "runtime", "bun-mp3-helper", "dist");
 const MP3_HELPER_BINARY_NAME = process.platform === "win32" ? "relyy-mp3-helper.exe" : "relyy-mp3-helper";
 const CLOUDFLARED_BINARY_NAME = process.platform === "win32" ? "cloudflared.exe" : "cloudflared";
-const CLOUDFLARED_RUNTIME_ROOT = path.resolve(REPO_ROOT, "runtime", "cloudflared");
+const CLOUDFLARED_REPO_ROOT = path.resolve(REPO_ROOT, "cloudflared");
 
 function getPlatformAssetFolders() {
   if (process.platform === "win32") {
@@ -30,7 +30,15 @@ async function copyIfPresent(sourcePath, destinationPath) {
     return false;
   }
 
-  await cp(sourcePath, destinationPath, { recursive: true });
+  try {
+    await cp(sourcePath, destinationPath, { recursive: true });
+  } catch (err) {
+    if (err.code === "EPERM") {
+      console.warn(`[build] could not copy ${path.basename(sourcePath)} (file may be locked/in-use), skipping`);
+      return existsSync(destinationPath); // treat as success if dest already exists
+    }
+    throw err;
+  }
   return true;
 }
 
@@ -59,37 +67,32 @@ function resolveMp3HelperBinary() {
   return null;
 }
 
-function getCloudflaredBinaryCandidates() {
+function resolveCloudflaredBinary() {
   const explicitBinary = process.env.RELYY_CLOUDFLARED_BINARY?.trim();
   if (explicitBinary) {
-    return [path.resolve(REPO_ROOT, explicitBinary)];
+    const p = path.resolve(REPO_ROOT, explicitBinary);
+    return existsSync(p) ? p : null;
   }
 
-  const platformFolder = process.platform === "win32"
-    ? "win"
-    : process.platform === "darwin"
-      ? "mac"
-      : "linux";
+  const platformFolder = process.platform === "win32" ? "win" : process.platform === "darwin" ? "mac" : "linux";
+  const dir = path.resolve(CLOUDFLARED_REPO_ROOT, platformFolder);
 
-  return [
-    path.resolve(CLOUDFLARED_RUNTIME_ROOT, CLOUDFLARED_BINARY_NAME),
-    path.resolve(CLOUDFLARED_RUNTIME_ROOT, platformFolder, CLOUDFLARED_BINARY_NAME),
-    path.resolve(CLOUDFLARED_RUNTIME_ROOT, `${platformFolder}-${process.arch}`, CLOUDFLARED_BINARY_NAME),
-  ];
-}
+  if (!existsSync(dir)) return null;
 
-function resolveCloudflaredBinary() {
-  for (const candidate of getCloudflaredBinaryCandidates()) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
+  const files = readdirSync(dir).filter((f) => !f.startsWith("."));
+  if (!files.length) return null;
+
+  return path.resolve(dir, files[0]);
 }
 
 async function main() {
   await mkdir(BUILD_ROOT, { recursive: true });
-  await rm(BUILD_MEDIAMTX_ROOT, { recursive: true, force: true });
+  try {
+    await rm(BUILD_MEDIAMTX_ROOT, { recursive: true, force: true });
+  } catch (err) {
+    if (err.code !== "EPERM") throw err;
+    console.warn("[build] could not remove mediamtx build dir (files may be locked), will overwrite in place");
+  }
   await mkdir(BUILD_MEDIAMTX_ROOT, { recursive: true });
   await mkdir(BUILD_BIN_ROOT, { recursive: true });
 

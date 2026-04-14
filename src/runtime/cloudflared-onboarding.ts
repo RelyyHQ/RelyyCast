@@ -51,6 +51,8 @@ export type EnsureCloudflareOnboardingInput = {
   cloudflareHostname: string;
   cloudflareConfigPath: string;
   originUrl: string;
+  hlsOriginUrl?: string;
+  hlsRelayPath?: string;
   trigger: "auto" | "request-login" | "retry";
   previousState?: CloudflareOnboardingState | null;
 };
@@ -534,6 +536,8 @@ function buildConfigYaml(
   certPath: string,
   hostname: string,
   originUrl: string,
+  hlsOriginUrl?: string,
+  hlsRelayPath?: string,
 ) {
   const lines: string[] = [
     `tunnel: ${tunnelId}`,
@@ -543,6 +547,13 @@ function buildConfigYaml(
   ];
 
   if (hostname) {
+    // HLS path rule must come before the catch-all MP3 rule
+    if (hlsOriginUrl && hlsRelayPath) {
+      const escapedPath = hlsRelayPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      lines.push(`  - hostname: ${hostname}`);
+      lines.push(`    path: /${escapedPath}/.*`);
+      lines.push(`    service: ${hlsOriginUrl}`);
+    }
     lines.push(`  - hostname: ${hostname}`);
     lines.push(`    service: ${originUrl}`);
   } else {
@@ -809,6 +820,8 @@ export async function ensureCloudflareOnboarding(
     certResult.certPath,
     hostname,
     originUrl,
+    input.hlsOriginUrl,
+    input.hlsRelayPath,
   );
 
   await writeFile(tunnelConfigPath, tunnelConfig);

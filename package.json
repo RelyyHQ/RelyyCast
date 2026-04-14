@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 3000",
     "neutralino:run": "npx neu run",
-    "neutralino:build": "npx neu build",
+    "neutralino:build": "npx neu build && node scripts/stage-dist-binaries.mjs",
+    "installer:build": "node scripts/installers/build-installer.mjs",
+    "installer:build:skip-sign": "node scripts/installers/build-installer.mjs --skip-sign",
     "neutralino:update": "npx neu update",
     "mp3-helper:dev": "bun run runtime/bun-mp3-helper/src/main.ts",
     "mp3-helper:build": "node scripts/build-bun-mp3-helper.mjs",

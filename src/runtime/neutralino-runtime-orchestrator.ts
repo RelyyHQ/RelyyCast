@@ -160,7 +160,7 @@ function cloneRuntimeState(state: RuntimeState): RuntimeState {
 function createDefaultConfig(): RuntimeConfig {
   return {
     inputUrl: "http://127.0.0.1:4850/live.mp3",
-    stationName: "RelyyCast Dev Stream",
+    stationName: "",
     genre: "Various",
     description: "Local FFmpeg test source",
     bitrate: "128k",
@@ -177,7 +177,7 @@ function createDefaultConfig(): RuntimeConfig {
     channels: "2",
     cloudflaredPath: "",
     cloudflareMode: "named",
-    cloudflareTunnelName: "relyycast-local",
+    cloudflareTunnelName: "",
     cloudflareHostname: "",
     cloudflareConfigPath: "",
   };
@@ -1062,6 +1062,8 @@ async function buildLaunchForProcess(
       cloudflareHostname: config.cloudflareHostname,
       cloudflareConfigPath: config.cloudflareConfigPath,
       originUrl: getCloudflareOriginUrl(config),
+      hlsOriginUrl: "http://127.0.0.1:8888",
+      hlsRelayPath: normalizeRelayPath(config.relayPath),
       trigger,
       previousState: runtimeState?.cloudflare ?? null,
     });
