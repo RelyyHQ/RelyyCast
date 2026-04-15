@@ -817,10 +817,27 @@ async function resolveBunExecutable() {
         ),
       );
     }
+    // On Windows fall through to the raw "bun" PATH name if none of the
+    // above candidate paths resolve — the installer puts it on PATH.
+    const detected = await findFirstExisting(candidates);
+    return detected ?? "bun";
   }
 
-  const detected = await findFirstExisting(candidates);
-  return detected ?? "bun";
+  // macOS / Linux: add the standard bun install locations so we can
+  // definitively tell whether bun is present.  If it is NOT found at
+  // any known path, return null rather than the bare "bun" string.
+  // Returning the bare string causes os.spawnProcess to launch a shell
+  // that exits immediately with code 127, which briefly flips
+  // mp3Helper.running to true and triggers failed health-check fetches.
+  // Users who install bun to a non-standard location can set BUN_BIN.
+  const home = typeof envs.HOME === "string" ? envs.HOME.trim() : "";
+  if (home) {
+    candidates.push(joinPath(home, ".bun", "bin", "bun"));
+  }
+  candidates.push("/opt/homebrew/bin/bun");
+  candidates.push("/usr/local/bin/bun");
+
+  return await findFirstExisting(candidates);
 }
 
 async function findFirstExisting(paths: string[]) {
@@ -904,7 +921,7 @@ async function resolveFfmpegPath(config: RuntimeConfig) {
   return isWindows() ? "ffmpeg.exe" : "ffmpeg";
 }
 
-async function resolveMp3HelperLaunch(config: RuntimeConfig): Promise<ProcessLaunch> {
+async function resolveMp3HelperLaunch(config: RuntimeConfig): Promise<ProcessLaunch | null> {
   const helperArgs = [
     "--host",
     config.mp3HelperHost,
@@ -965,7 +982,10 @@ async function resolveMp3HelperLaunch(config: RuntimeConfig): Promise<ProcessLau
     };
   }
 
-  throw new Error("unable to find Bun MP3 helper executable or source script");
+  // Binary and bun not found — return null so the orchestrator leaves
+  // mp3Helper stopped without scheduling a restart loop that re-renders
+  // every 2s and breaks input focus on Mac.
+  return null;
 }
 
 function getRelayEndpoints(config: RuntimeConfig) {
@@ -1241,6 +1261,25 @@ async function cleanupStaleProcesses() {
   }
 }
 
+async function killOrphanedManagedProcesses() {
+  // Windows behavior is working correctly; leave it untouched.
+  if (isWindows()) {
+    return;
+  }
+
+  // Kill any app-managed processes left over from a previous session that was
+  // hard-closed or crashed (those won't appear in getSpawnedProcesses).
+  // These are binaries unique to this app, so killing by exact name is safe.
+  const names = ["mediamtx", "relyy-mp3-helper", "cloudflared"];
+  for (const name of names) {
+    try {
+      await os.execCommand(`pkill -x "${name}" 2>/dev/null || true`);
+    } catch {
+      // Ignore — no matching process is not an error.
+    }
+  }
+}
+
 function handleSpawnedProcessEvent(event: CustomEvent<SpawnedProcessEventDetail>) {
   const detail = event.detail;
   const id = typeof detail?.id === "number" ? detail.id : null;
@@ -1373,6 +1412,7 @@ async function startRuntimeOrchestrationInternal() {
   schedulePersistRuntimeState();
 
   await cleanupStaleProcesses();
+  await killOrphanedManagedProcesses();
   await startAllManagedProcesses();
 
   updateRuntimeState((current) => {

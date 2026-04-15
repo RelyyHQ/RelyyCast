@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { os as nlOs } from "@neutralinojs/lib";
 import AppStatusFooter from "@/components/chrome/AppStatusFooter";
 import AppWindowChrome from "@/components/chrome/AppWindowChrome";
 import {
@@ -757,7 +758,7 @@ function renderTab(
               <div className="flex flex-col gap-1">
                 <button
                   type="button"
-                  onClick={context.onRequestCloudflareLogin}
+                  onClick={context.onSaveAndConnect}
                   disabled={hasBusyAction || isProvisioning}
                   className="h-7 rounded-sm border border-[hsl(var(--theme-primary))] bg-[hsl(var(--theme-primary))] text-[9px] font-semibold text-white disabled:opacity-60"
                 >
@@ -828,10 +829,10 @@ function renderTab(
             ) : null}
 
             <div className="grid grid-cols-2 gap-1">
-              <ActionButton onClick={() => { window.open(context.streamUrl, "_blank", "noopener,noreferrer"); }}>
+              <ActionButton onClick={() => { void nlOs.open(context.streamUrl); }}>
                 Open MP3
               </ActionButton>
-              <ActionButton onClick={() => { window.open(context.hlsUrl, "_blank", "noopener,noreferrer"); }}>
+              <ActionButton onClick={() => { void nlOs.open(context.hlsUrl); }}>
                 Open HLS
               </ActionButton>
             </div>

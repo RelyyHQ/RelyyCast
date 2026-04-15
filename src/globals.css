@@ -139,4 +139,13 @@
     font-family: var(--font-sans);
     background-color: hsl(var(--background));
   }
+
+/* .platform-mac body {
+  font-size: 18px !important;
+}
+
+.platform-windows body {
+  font-size: 14px;
+} */
+
 }
