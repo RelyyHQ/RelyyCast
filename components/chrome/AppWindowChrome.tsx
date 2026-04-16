@@ -176,31 +176,21 @@ export default function AppWindowChrome({
     }
 
     async function setupWindowChrome() {
-      console.info("[AppWindowChrome] applying window constraints and drag region.");
+      console.info("[AppWindowChrome] applying drag region.");
 
-      try {
-        await nlWindow.exitFullScreen();
-      } catch (error) {
-        console.warn("[AppWindowChrome] exitFullScreen failed.", error);
-      }
-
-      try {
-        await nlWindow.setSize({
-          width: 1024,
-          height: 500,
-          minWidth: 1024,
-          minHeight: 500,
-          maxWidth: 1024,
-          maxHeight: 500,
-        });
-      } catch (error) {
-        console.warn("[AppWindowChrome] setSize failed.", error);
-      }
-
-      try {
-        await nlWindow.setBorderless(true);
-      } catch (error) {
-        console.warn("[AppWindowChrome] setBorderless failed.", error);
+      // setSize / setBorderless are already declared in neutralino.config.json and applied
+      // at native startup. Re-calling them from JS triggers setStyleMask:/setFrame: on
+      // macOS which resets the WKWebView first-responder slot → breaking all keyboard input.
+      // 
+      // Workaround: We specifically disable borderless mode on macOS because borderless
+      // windows on macOS completely fail to capture keyboard focus.
+      if (platform === "macos") {
+        try {
+          await nlWindow.setBorderless(false);
+          console.info("[AppWindowChrome] disabled borderless mode for macOS.");
+        } catch (error) {
+          console.warn("[AppWindowChrome] setBorderless(false) fallback failed.", error);
+        }
       }
 
       const exclude: Array<string | HTMLElement> = [];
@@ -234,6 +224,16 @@ export default function AppWindowChrome({
         if (dragFallbackEnabledRef.current) {
           console.warn("[AppWindowChrome] beginDrag fallback enabled.");
         }
+      }
+
+      // On macOS, setBorderless / setSize can cause the NSWindow to resign key-window
+      // status, which silently breaks all keyboard input and input focus routing.
+      // Calling focus() restores key-window status without affecting other platforms.
+      try {
+        await nlWindow.focus();
+        console.info("[AppWindowChrome] window focus restored.");
+      } catch (error) {
+        console.warn("[AppWindowChrome] window.focus() failed.", error);
       }
     }
 
@@ -312,7 +312,7 @@ export default function AppWindowChrome({
       onMouseDown={(event) => {
         void onHeaderMouseDown(event);
       }}
-      className="[-webkit-app-region:drag] flex items-center gap-2 border-b border-[hsl(var(--theme-border))] px-2.5 py-2"
+      className="flex items-center gap-2 border-b border-[hsl(var(--theme-border))] px-2.5 py-2"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] text-[10px] font-black tracking-[0.2em] text-[hsl(var(--theme-primary))]">
