@@ -13,13 +13,26 @@
  */
 
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR  = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT   = path.resolve(SCRIPT_DIR, "../..");
 const DIST_SRC    = path.resolve(REPO_ROOT, "dist", "relyycast");
+
+const MAC_SIGNING_ENV_KEYS = [
+  "APPLE_SIGN_APP",
+  "APPLE_SIGN_PKG",
+  "APPLE_INSTALLER_CERT_P12",
+  "APPLE_INSTALLER_CERT_PASSWORD",
+  "APPLE_KEYCHAIN_PATH",
+  "APPLE_KEYCHAIN_PASSWORD",
+  "APPLE_ID",
+  "APPLE_APP_PASSWORD",
+  "APPLE_TEAM_ID",
+  "NOTARIZE_PROFILE",
+];
 
 // Forward flags to sub-scripts
 const forwardArgs = process.argv.slice(2);
@@ -29,6 +42,84 @@ const SKIP_NOTARIZE  = forwardArgs.includes("--skip-notarize");
 function run(cmd, opts = {}) {
   console.log(`\n$ ${cmd}`);
   execSync(cmd, { stdio: "inherit", ...opts });
+}
+
+function parseDotenv(content) {
+  const out = {};
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1);
+    } else if (value.startsWith("'") && value.endsWith("'")) {
+      value = value.slice(1, -1);
+    } else {
+      value = value.replace(/\s+#.*$/, "");
+    }
+
+    out[key] = value;
+  }
+  return out;
+}
+
+function loadInstallerEnvFiles() {
+  const candidates = [
+    path.join(REPO_ROOT, ".env.installer.local"),
+    path.join(REPO_ROOT, ".env.local"),
+    path.join(REPO_ROOT, ".env"),
+  ];
+
+  const loadedPaths = [];
+
+  for (const envPath of candidates) {
+    if (!existsSync(envPath)) continue;
+    const parsed = parseDotenv(readFileSync(envPath, "utf8"));
+    let assignedCount = 0;
+
+    for (const key of MAC_SIGNING_ENV_KEYS) {
+      if (!process.env[key] && parsed[key]) {
+        process.env[key] = parsed[key];
+        assignedCount += 1;
+      }
+    }
+
+    if (assignedCount > 0) {
+      loadedPaths.push(`${envPath} (+${assignedCount})`);
+    }
+  }
+
+  if (loadedPaths.length > 0) {
+    console.log(`[installer] Loaded signing env from: ${loadedPaths.join(", ")}`);
+  }
+}
+
+function maybeLoadSiblingElectronNotaryProfile() {
+  if (process.env.NOTARIZE_PROFILE) return;
+
+  const siblingStatePath = path.resolve(REPO_ROOT, "..", "relyy-radio", ".local", "macos-signing.env");
+  if (!existsSync(siblingStatePath)) return;
+
+  const state = readFileSync(siblingStatePath, "utf8");
+  const profileLine = state
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("RELYY_SAVED_APPLE_KEYCHAIN_PROFILE="));
+
+  if (!profileLine) return;
+
+  const rawProfile = profileLine.split("=").slice(1).join("=").trim();
+  if (!rawProfile) return;
+
+  const profile = rawProfile.replace(/\\ /g, " ").replace(/\\([()"'\\])/g, "$1");
+  if (!profile) return;
+
+  process.env.NOTARIZE_PROFILE = profile;
+  console.log(`[installer] Reusing notary profile from relyy-radio state: ${profile}`);
 }
 
 // -------------------------------------------------------------------------
@@ -138,6 +229,8 @@ if (process.platform === "win32") {
   console.log("[installer] Building Windows installer (NSIS)...");
   buildWindows();
 } else if (process.platform === "darwin") {
+  loadInstallerEnvFiles();
+  maybeLoadSiblingElectronNotaryProfile();
   console.log("[installer] Building macOS installer (.pkg)...");
   buildMac();
 } else {

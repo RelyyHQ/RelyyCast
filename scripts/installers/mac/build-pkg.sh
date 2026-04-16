@@ -7,13 +7,19 @@
 # Required env vars for signing:
 #   APPLE_SIGN_APP       — "Developer ID Application: Randal Herndon (8938LN7846)"
 #   APPLE_SIGN_PKG       — "Developer ID Installer: Randal Herndon (8938LN7846)"
+# Optional env vars for auto-importing installer cert when missing:
+#   APPLE_INSTALLER_CERT_P12      — absolute path to Developer ID Installer .p12
+#   APPLE_INSTALLER_CERT_PASSWORD — password for the .p12 file
+#   APPLE_KEYCHAIN_PATH           — optional keychain path (defaults to login keychain)
+#   APPLE_KEYCHAIN_PASSWORD       — optional keychain password for unlock/partition updates
 #
 # Required env vars for notarization (or stored keychain profile):
 #   APPLE_ID             — your Apple ID email
 #   APPLE_APP_PASSWORD   — app-specific password from appleid.apple.com
 #   APPLE_TEAM_ID        — 8938LN7846
-#   NOTARIZE_PROFILE     — (optional) keychain credential profile name created via
-#                          `xcrun notarytool store-credentials`; if set, env vars are ignored
+#   NOTARIZE_PROFILE     — (optional) keychain credential profile name; if unset and
+#                          APPLE_ID + APPLE_APP_PASSWORD are present, this script will
+#                          auto-create/use relyycast-notarization-<TEAM_ID>
 #
 # Outputs:
 #   dist/RelyyCast.pkg
@@ -40,40 +46,118 @@ TEAM_ID="${APPLE_TEAM_ID:-8938LN7846}"
 # Default signing identities (can be overridden by env)
 SIGN_APP="${APPLE_SIGN_APP:-Developer ID Application: Randal Herndon ($TEAM_ID)}"
 SIGN_PKG="${APPLE_SIGN_PKG:-Developer ID Installer: Randal Herndon ($TEAM_ID)}"
+DEFAULT_NOTARIZE_PROFILE="relyycast-notarization-$TEAM_ID"
 
 # -----------------------------------------------------------------------
 # Flag parsing
 # -----------------------------------------------------------------------
 SKIP_SIGN=false
 SKIP_NOTARIZE=false
+SKIP_APP_SIGN=false
+SKIP_PKG_SIGN=false
 
 for arg in "$@"; do
     case "$arg" in
-        --skip-sign)      SKIP_SIGN=true ;;
+        --skip-sign)
+            SKIP_SIGN=true
+            SKIP_APP_SIGN=true
+            SKIP_PKG_SIGN=true
+            ;;
         --skip-notarize)  SKIP_NOTARIZE=true ;;
     esac
 done
 
-# Auto-skip signing if required certs are unavailable.
+maybe_import_installer_cert() {
+    local p12_path="${APPLE_INSTALLER_CERT_P12:-}"
+    local p12_password="${APPLE_INSTALLER_CERT_PASSWORD:-}"
+    local keychain_path="${APPLE_KEYCHAIN_PATH:-$HOME/Library/Keychains/login.keychain-db}"
+
+    if [ -z "$p12_path" ] || [ -z "$p12_password" ]; then
+        return 0
+    fi
+
+    if [ ! -f "$p12_path" ]; then
+        echo "[pkg] WARNING: APPLE_INSTALLER_CERT_P12 points to a missing file: $p12_path"
+        return 0
+    fi
+
+    echo "[pkg] INFO: Attempting to import Developer ID Installer certificate from APPLE_INSTALLER_CERT_P12"
+
+    if [ -n "${APPLE_KEYCHAIN_PASSWORD:-}" ]; then
+        security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain_path" >/dev/null 2>&1 || true
+    fi
+
+    if security import "$p12_path" \
+        -k "$keychain_path" \
+        -P "$p12_password" \
+        -T /usr/bin/productsign \
+        -T /usr/bin/security \
+        -T /usr/bin/codesign >/dev/null 2>&1; then
+        echo "[pkg] INFO: Imported installer certificate into keychain: $keychain_path"
+    else
+        echo "[pkg] WARNING: Failed to import installer certificate from APPLE_INSTALLER_CERT_P12"
+        return 0
+    fi
+
+    if [ -n "${APPLE_KEYCHAIN_PASSWORD:-}" ]; then
+        security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$APPLE_KEYCHAIN_PASSWORD" \
+            "$keychain_path" >/dev/null 2>&1 || true
+    fi
+}
+
+maybe_import_installer_cert
+
+# Auto-skip signing if required cert identities are unavailable.
 HAS_APP_SIGN_CERT=true
 HAS_INSTALLER_SIGN_CERT=true
 
-if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "Developer ID Application"; then
+CODE_SIGN_IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+BASIC_IDENTITIES="$(security find-identity -v -p basic 2>/dev/null || true)"
+
+if ! printf '%s\n' "$CODE_SIGN_IDENTITIES" | grep -Fq "\"$SIGN_APP\""; then
+    FALLBACK_SIGN_APP="$(printf '%s\n' "$CODE_SIGN_IDENTITIES" | sed -n "s/.*\"\(Developer ID Application:.*($TEAM_ID)\)\"/\1/p" | head -n 1)"
+    if [ -n "$FALLBACK_SIGN_APP" ]; then
+        SIGN_APP="$FALLBACK_SIGN_APP"
+        echo "[pkg] INFO: APPLE_SIGN_APP not found exactly; using detected Team ID match: $SIGN_APP"
+    fi
+fi
+
+if ! printf '%s\n' "$CODE_SIGN_IDENTITIES" | grep -Fq "\"$SIGN_APP\""; then
     HAS_APP_SIGN_CERT=false
 fi
 
-if ! security find-identity -v -p basic 2>/dev/null | grep -q "Developer ID Installer"; then
+if ! printf '%s\n' "$BASIC_IDENTITIES" | grep -Fq "\"$SIGN_PKG\""; then
+    FALLBACK_SIGN_PKG="$(printf '%s\n' "$BASIC_IDENTITIES" | sed -n "s/.*\"\(Developer ID Installer:.*($TEAM_ID)\)\"/\1/p" | head -n 1)"
+    if [ -n "$FALLBACK_SIGN_PKG" ]; then
+        SIGN_PKG="$FALLBACK_SIGN_PKG"
+        echo "[pkg] INFO: APPLE_SIGN_PKG not found exactly; using detected Team ID match: $SIGN_PKG"
+    fi
+fi
+
+if ! printf '%s\n' "$BASIC_IDENTITIES" | grep -Fq "\"$SIGN_PKG\""; then
     HAS_INSTALLER_SIGN_CERT=false
 fi
 
-if [ "$HAS_APP_SIGN_CERT" = false ] || [ "$HAS_INSTALLER_SIGN_CERT" = false ]; then
-    if [ "$HAS_APP_SIGN_CERT" = false ]; then
-        echo "[pkg] WARNING: No 'Developer ID Application' cert found in keychain — skipping signing"
-    fi
-    if [ "$HAS_INSTALLER_SIGN_CERT" = false ]; then
-        echo "[pkg] WARNING: No 'Developer ID Installer' cert found in keychain — skipping signing"
-    fi
+if [ "$HAS_APP_SIGN_CERT" = false ]; then
+    echo "[pkg] WARNING: Signing identity not found in keychain for APPLE_SIGN_APP"
+    echo "[pkg]          expected: $SIGN_APP"
+    SKIP_APP_SIGN=true
+fi
+
+if [ "$HAS_INSTALLER_SIGN_CERT" = false ]; then
+    echo "[pkg] WARNING: Signing identity not found in keychain for APPLE_SIGN_PKG"
+    echo "[pkg]          expected: $SIGN_PKG"
+    SKIP_PKG_SIGN=true
+fi
+
+if [ "$SKIP_APP_SIGN" = true ] && [ "$SKIP_PKG_SIGN" = true ]; then
     SKIP_SIGN=true
+fi
+
+if [ "$SKIP_PKG_SIGN" = true ]; then
     SKIP_NOTARIZE=true
 fi
 
@@ -81,6 +165,39 @@ fi
 # Helpers
 # -----------------------------------------------------------------------
 log() { echo "[pkg] $*"; }
+
+ensure_notary_profile() {
+    if [ -n "${NOTARIZE_PROFILE:-}" ]; then
+        echo "[pkg] Using NOTARIZE_PROFILE=$NOTARIZE_PROFILE" >&2
+        printf '%s\n' "$NOTARIZE_PROFILE"
+        return 0
+    fi
+
+    if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_PASSWORD:-}" ]; then
+        return 1
+    fi
+
+    local profile_name="$DEFAULT_NOTARIZE_PROFILE"
+    local store_output
+    store_output="$(mktemp /tmp/relyycast-notary-store.XXXXXX)"
+
+    if xcrun notarytool store-credentials "$profile_name" \
+        --apple-id "$APPLE_ID" \
+        --team-id "$TEAM_ID" \
+        --password "$APPLE_APP_PASSWORD" >"$store_output" 2>&1; then
+        echo "[pkg] Stored notary keychain profile: $profile_name" >&2
+    elif grep -qi "already exists" "$store_output"; then
+        echo "[pkg] Using existing notary keychain profile: $profile_name" >&2
+    else
+        echo "[pkg] ERROR: Failed to store notary credentials profile '$profile_name'"
+        cat "$store_output"
+        rm -f "$store_output"
+        exit 1
+    fi
+
+    rm -f "$store_output"
+    printf '%s\n' "$profile_name"
+}
 
 require_file() {
     if [ ! -e "$1" ]; then
@@ -92,7 +209,7 @@ require_file() {
 sign_binary() {
     local binary="$1"
     local entitlements="${2:-}"
-    if $SKIP_SIGN; then return 0; fi
+    if $SKIP_APP_SIGN; then return 0; fi
     if [ -n "$entitlements" ]; then
         codesign --force --options runtime --entitlements "$entitlements" \
             --sign "$SIGN_APP" --timestamp "$binary"
@@ -105,7 +222,7 @@ sign_binary() {
 
 sign_resource() {
     local resource="$1"
-    if $SKIP_SIGN; then return 0; fi
+    if $SKIP_APP_SIGN; then return 0; fi
     codesign --force --sign "$SIGN_APP" --timestamp "$resource"
     log "  signed resource: $(basename "$resource")"
 }
@@ -124,7 +241,7 @@ MP3_HELPER="$DIST_SRC/build/bin/relyy-mp3-helper"
 HAS_MP3_HELPER=false
 if [ -f "$MP3_HELPER" ]; then
     HAS_MP3_HELPER=true
-    if ! $SKIP_SIGN; then
+    if ! $SKIP_APP_SIGN; then
         TMP_MP3_SIGN_CHECK="$(mktemp /tmp/relyycast-mp3-signcheck.XXXXXX)"
         cp "$MP3_HELPER" "$TMP_MP3_SIGN_CHECK"
         if ! codesign --force --sign "$SIGN_APP" --timestamp "$TMP_MP3_SIGN_CHECK" >/dev/null 2>&1; then
@@ -199,7 +316,7 @@ sign_resource "$MACOS_DIR/resources.neu"
 sign_resource "$MACOS_DIR/build/mediamtx/mediamtx.yml"
 sign_binary "$MACOS_DIR/relyycast"                      "$APP_ENTITLEMENTS"
 
-if ! $SKIP_SIGN; then
+if ! $SKIP_APP_SIGN; then
     log "Signing .app bundle..."
     codesign --force --deep --options runtime \
         --entitlements "$APP_ENTITLEMENTS" \
@@ -251,7 +368,7 @@ if $HAS_MP3_HELPER; then
     cp "$MP3_HELPER" "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper"
     chmod +x "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper"
 
-    if ! $SKIP_SIGN; then
+    if ! $SKIP_APP_SIGN; then
         sign_binary \
             "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper" \
             "$CHILD_ENTITLEMENTS"
@@ -303,7 +420,7 @@ log "  unsigned pkg: $UNSIGNED_PKG"
 # -----------------------------------------------------------------------
 # Sign the installer pkg
 # -----------------------------------------------------------------------
-if ! $SKIP_SIGN; then
+if ! $SKIP_PKG_SIGN; then
     log "Signing installer package..."
     productsign --sign "$SIGN_PKG" --timestamp "$UNSIGNED_PKG" "$FINAL_PKG"
     rm -f "$UNSIGNED_PKG"
@@ -316,32 +433,27 @@ fi
 # -----------------------------------------------------------------------
 # Notarization
 # -----------------------------------------------------------------------
-if $SKIP_SIGN || $SKIP_NOTARIZE; then
+if $SKIP_PKG_SIGN || $SKIP_NOTARIZE; then
     log "Skipping notarization."
 else
     log "Submitting for notarization..."
 
-    if [ -n "${NOTARIZE_PROFILE:-}" ]; then
-        # Use stored keychain credentials profile (preferred for local dev)
+    EFFECTIVE_PROFILE=""
+    if EFFECTIVE_PROFILE="$(ensure_notary_profile)"; then
         xcrun notarytool submit "$FINAL_PKG" \
-            --keychain-profile "$NOTARIZE_PROFILE" \
-            --wait
-    elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
-        # Use env var credentials (CI / automated builds)
-        xcrun notarytool submit "$FINAL_PKG" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --team-id "$TEAM_ID" \
+            --keychain-profile "$EFFECTIVE_PROFILE" \
             --wait
     else
         echo "[pkg] WARNING: No notarization credentials found."
-        echo "  Set NOTARIZE_PROFILE (keychain) or APPLE_ID + APPLE_APP_PASSWORD + APPLE_TEAM_ID."
+        echo "  Set NOTARIZE_PROFILE or APPLE_ID + APPLE_APP_PASSWORD + APPLE_TEAM_ID."
         echo "  Skipping notarization — pkg will trigger Gatekeeper warnings on first launch."
     fi
 
-    log "Stapling notarization ticket..."
-    xcrun stapler staple "$FINAL_PKG"
-    log "  staple complete"
+    if [ -n "$EFFECTIVE_PROFILE" ]; then
+        log "Stapling notarization ticket..."
+        xcrun stapler staple "$FINAL_PKG"
+        log "  staple complete"
+    fi
 fi
 
 # -----------------------------------------------------------------------
@@ -352,9 +464,6 @@ rm -rf "$STAGING"
 log ""
 log "Done! Installer: $FINAL_PKG"
 log ""
-log "To set up notarization credentials (one-time, stored in keychain):"
-log "  xcrun notarytool store-credentials \"relyycast-notarization\" \\"
-log "    --apple-id YOUR_APPLE_ID@email.com \\"
-log "    --team-id 8938LN7846 \\"
-log "    --password YOUR_APP_SPECIFIC_PASSWORD"
-log "Then set: export NOTARIZE_PROFILE=relyycast-notarization"
+log "Notarization automation:"
+log "  If NOTARIZE_PROFILE is unset and APPLE_ID + APPLE_APP_PASSWORD are set,"
+log "  this script auto-creates/uses keychain profile: $DEFAULT_NOTARIZE_PROFILE"
