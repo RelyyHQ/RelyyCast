@@ -9,8 +9,8 @@
  */
 
 import path from "node:path";
-import { existsSync, readdirSync } from "node:fs";
-import { cp, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -28,10 +28,17 @@ function getPlatformFolder() {
   return "linux";
 }
 
+function getHostBinaryNames() {
+  return {
+    cloudflaredBinaryName: process.platform === "win32" ? "cloudflared.exe" : "cloudflared",
+    mp3HelperBinaryName: process.platform === "win32" ? "relyy-mp3-helper.exe" : "relyy-mp3-helper",
+  };
+}
+
 function getRequiredBuildInputs() {
   const platformFolder = getPlatformFolder();
   const mediamtxBinaryName = process.platform === "win32" ? "mediamtx.exe" : "mediamtx";
-  const cloudflaredBinaryName = process.platform === "win32" ? "cloudflared.exe" : "cloudflared";
+  const { cloudflaredBinaryName } = getHostBinaryNames();
 
   return [
     path.resolve(BUILD_ROOT, "mediamtx", "mediamtx.yml"),
@@ -70,6 +77,12 @@ async function main() {
   validateRequiredBuildInputs();
 
   const staged = [];
+  const distMediamtxRoot = path.resolve(DIST_APP_ROOT, "build", "mediamtx");
+  const distBinRoot = path.resolve(DIST_APP_ROOT, "build", "bin");
+
+  // Avoid stale cross-platform payloads between repeated packaging runs.
+  await rm(distMediamtxRoot, { recursive: true, force: true });
+  await rm(distBinRoot, { recursive: true, force: true });
 
   // mediamtx — copy whole platform folder (mediamtx/win or mediamtx/mac)
   const platformFolder = getPlatformFolder();
@@ -85,17 +98,18 @@ async function main() {
     staged.push("build/mediamtx/mediamtx.yml");
   }
 
-  // bin — copy entire build/bin directory (cloudflared, mp3-helper)
-  const binSrc = path.resolve(BUILD_ROOT, "bin");
-  const binDest = path.resolve(DIST_APP_ROOT, "build", "bin");
-  if (existsSync(binSrc)) {
-    await mkdir(binDest, { recursive: true });
-    for (const file of readdirSync(binSrc).filter((f) => !f.startsWith("."))) {
-      const src = path.resolve(binSrc, file);
-      const dest = path.resolve(binDest, file);
-      await cp(src, dest, { force: true });
-      staged.push(`build/bin/${file}`);
-    }
+  // bin — copy only host binaries expected by runtime/installer.
+  const { cloudflaredBinaryName, mp3HelperBinaryName } = getHostBinaryNames();
+  const cloudflaredSrc = path.resolve(BUILD_ROOT, "bin", cloudflaredBinaryName);
+  const cloudflaredDest = path.resolve(DIST_APP_ROOT, "build", "bin", cloudflaredBinaryName);
+  if (await copyIfPresent(cloudflaredSrc, cloudflaredDest)) {
+    staged.push(`build/bin/${cloudflaredBinaryName}`);
+  }
+
+  const mp3HelperSrc = path.resolve(BUILD_ROOT, "bin", mp3HelperBinaryName);
+  const mp3HelperDest = path.resolve(DIST_APP_ROOT, "build", "bin", mp3HelperBinaryName);
+  if (await copyIfPresent(mp3HelperSrc, mp3HelperDest)) {
+    staged.push(`build/bin/${mp3HelperBinaryName}`);
   }
 
   if (!staged.length) {
