@@ -1,16 +1,37 @@
 MIT License
 
-Copyright (c) 2026 Randal Herndon
+Copyright (c) 2026 Randal Herndon, CRIB, LLC
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+copies of the Software, and to permit persons to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+---
+
+Trademark Notice
+
+"Relyy" and "RelyyCast" are trademarks of CRIB, LLC.
+
+This license does not grant permission to use the Relyy or RelyyCast names,
+logos, or branding for commercial or promotional purposes without prior
+written permission.
+
+---
+
+Project Scope
+
+This repository contains the open-source core of RelyyCast, a lightweight
+broadcasting and streaming layer built on top of MediaMTX and related tooling.
+
+Other services, infrastructure, or features offered under the Relyy brand may
+be proprietary and are not included in this license.
+
+---
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
