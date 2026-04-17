@@ -13,13 +13,14 @@
  */
 
 import path from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR  = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT   = path.resolve(SCRIPT_DIR, "../..");
 const DIST_SRC    = path.resolve(REPO_ROOT, "dist", "relyycast");
+const BUILD_BIN   = path.resolve(REPO_ROOT, "build", "bin");
 
 const MAC_SIGNING_ENV_KEYS = [
   "APPLE_SIGN_APP",
@@ -139,6 +140,50 @@ function checkDistSrc() {
   }
 }
 
+function getMp3HelperNames() {
+  if (process.platform === "win32") {
+    return { fileName: "relyy-mp3-helper.exe", runtimeDistName: "relyy-mp3-helper.exe" };
+  }
+  return { fileName: "relyy-mp3-helper", runtimeDistName: "relyy-mp3-helper" };
+}
+
+function maybeStageOptionalMp3Helper() {
+  const { fileName, runtimeDistName } = getMp3HelperNames();
+  const distTarget = path.join(DIST_SRC, "build", "bin", fileName);
+  if (existsSync(distTarget)) {
+    console.log(`[installer] Optional MP3 helper found in dist: ${path.relative(REPO_ROOT, distTarget)}`);
+    return;
+  }
+
+  const buildTarget = path.join(BUILD_BIN, fileName);
+  if (existsSync(buildTarget)) {
+    mkdirSync(path.dirname(distTarget), { recursive: true });
+    cpSync(buildTarget, distTarget);
+    console.log(`[installer] Staged optional MP3 helper from build/: ${path.relative(REPO_ROOT, distTarget)}`);
+    return;
+  }
+
+  const runtimeTarget = path.join(REPO_ROOT, "runtime", "bun-mp3-helper", "dist", "host", runtimeDistName);
+  if (!existsSync(runtimeTarget)) {
+    console.log("[installer] Optional MP3 helper not found; attempting to build host helper...");
+    try {
+      run("node scripts/build-bun-mp3-helper.mjs");
+    } catch (error) {
+      console.warn("[installer] MP3 helper build failed; continuing without MP3 helper component.");
+      return;
+    }
+  }
+
+  if (!existsSync(runtimeTarget)) {
+    console.warn("[installer] MP3 helper build did not produce expected host artifact; continuing without MP3 helper component.");
+    return;
+  }
+
+  mkdirSync(path.dirname(distTarget), { recursive: true });
+  cpSync(runtimeTarget, distTarget);
+  console.log(`[installer] Staged optional MP3 helper from runtime build: ${path.relative(REPO_ROOT, distTarget)}`);
+}
+
 // -------------------------------------------------------------------------
 // Windows — NSIS
 // -------------------------------------------------------------------------
@@ -224,6 +269,7 @@ function buildMac() {
 // -------------------------------------------------------------------------
 console.log("[installer] Checking dist source files...");
 checkDistSrc();
+maybeStageOptionalMp3Helper();
 
 if (process.platform === "win32") {
   console.log("[installer] Building Windows installer (NSIS)...");

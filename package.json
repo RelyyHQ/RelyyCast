@@ -11,6 +11,11 @@
     "neutralino:build": "npm run deps:preflight && npm run deps:stage && npx neu build && node scripts/stage-dist-binaries.mjs",
     "installer:build": "node scripts/installers/build-installer.mjs",
     "installer:build:skip-sign": "node scripts/installers/build-installer.mjs --skip-sign",
+    "release:upload:r2": "node scripts/release/upload-r2.mjs",
+    "release:upload:r2:dry-run": "node scripts/release/upload-r2.mjs --dry-run",
+    "release:notes": "node scripts/release/generate-patch-notes.mjs",
+    "version:bump:decimal": "node scripts/release/bump-version.mjs --mode decimal",
+    "version:bump:full": "node scripts/release/bump-version.mjs --mode full",
     "neutralino:update": "npx neu update",
     "mp3-helper:dev": "node scripts/run-bun-mp3-helper-dev.mjs",
     "mp3-helper:build": "node scripts/build-bun-mp3-helper.mjs",
@@ -20,6 +25,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.911.0",
     "@neutralinojs/lib": "^6.7.0",
     "lucide-react": "^1.8.0",
     "react": "19.2.4",

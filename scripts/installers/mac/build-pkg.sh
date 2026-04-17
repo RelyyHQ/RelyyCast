@@ -210,6 +210,12 @@ sign_binary() {
     local binary="$1"
     local entitlements="${2:-}"
     if $SKIP_APP_SIGN; then return 0; fi
+
+    # Some prebuilt binaries (notably Bun-compiled helpers) can contain a stale
+    # signature blob that causes "invalid or unsupported format for signature".
+    # Removing any existing signature first makes re-signing deterministic.
+    codesign --remove-signature "$binary" >/dev/null 2>&1 || true
+
     if [ -n "$entitlements" ]; then
         codesign --force --options runtime --entitlements "$entitlements" \
             --sign "$SIGN_APP" --timestamp "$binary"
@@ -244,6 +250,7 @@ if [ -f "$MP3_HELPER" ]; then
     if ! $SKIP_APP_SIGN; then
         TMP_MP3_SIGN_CHECK="$(mktemp /tmp/relyycast-mp3-signcheck.XXXXXX)"
         cp "$MP3_HELPER" "$TMP_MP3_SIGN_CHECK"
+        codesign --remove-signature "$TMP_MP3_SIGN_CHECK" >/dev/null 2>&1 || true
         if ! codesign --force --sign "$SIGN_APP" --timestamp "$TMP_MP3_SIGN_CHECK" >/dev/null 2>&1; then
             HAS_MP3_HELPER=false
             log "WARNING: MP3 helper found but cannot be code-signed on this machine — skipping optional component package"
@@ -383,6 +390,26 @@ if $HAS_MP3_HELPER; then
 
     log "  mp3helper pkg: $MP3_PKG"
 fi
+
+# -----------------------------------------------------------------------
+# pkgbuild: uninstall helper component pkg
+# -----------------------------------------------------------------------
+UNINSTALL_PKG="$STAGING/RelyyCast-uninstall.pkg"
+log "Building uninstall helper component package..."
+
+UNINSTALL_ROOT="$STAGING/_uninstall-root"
+mkdir -p "$UNINSTALL_ROOT/Applications"
+cp "$SCRIPT_DIR/uninstall-relyycast.sh" "$UNINSTALL_ROOT/Applications/RelyyCast Uninstall.command"
+chmod +x "$UNINSTALL_ROOT/Applications/RelyyCast Uninstall.command"
+
+pkgbuild \
+    --root "$UNINSTALL_ROOT" \
+    --identifier "${BUNDLE_ID}.uninstall" \
+    --version "$APP_VERSION" \
+    --install-location "/" \
+    "$UNINSTALL_PKG"
+
+log "  uninstall pkg: $UNINSTALL_PKG"
 
 # -----------------------------------------------------------------------
 # productbuild: assemble distribution installer

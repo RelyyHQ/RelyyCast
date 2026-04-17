@@ -17,6 +17,7 @@
     <choices-outline>
         <line choice="com.relyycast.app.core"/>
         <line choice="com.relyycast.app.mp3helper"/>
+        <line choice="com.relyycast.app.uninstall"/>
     </choices-outline>
 
     <!-- Core application — always selected, cannot be deselected -->
@@ -39,7 +40,18 @@
         <pkg-ref id="com.relyycast.app.mp3helper"/>
     </choice>
 
+    <!-- Uninstall helper script -->
+    <choice id="com.relyycast.app.uninstall"
+            title="Uninstall Script"
+            description="Installs a convenience script in Applications to fully uninstall RelyyCast."
+            start_enabled="true"
+            start_visible="true"
+            start_selected="true">
+        <pkg-ref id="com.relyycast.app.uninstall"/>
+    </choice>
+
     <pkg-ref id="com.relyycast.app.core"      version="0.1.0" onConclusion="none">RelyyCast-core.pkg</pkg-ref>
     <pkg-ref id="com.relyycast.app.mp3helper" version="0.1.0" onConclusion="none">RelyyCast-mp3helper.pkg</pkg-ref>
+    <pkg-ref id="com.relyycast.app.uninstall" version="0.1.0" onConclusion="none">RelyyCast-uninstall.pkg</pkg-ref>
 
 </installer-gui-script>
