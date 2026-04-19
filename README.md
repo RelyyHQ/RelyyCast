@@ -1,56 +1,78 @@
 # RelyyCast
 
-RelyyCast is a Neutralino desktop control plane for a local relay stack.
+RelyyCast is a free, open-source desktop app that lets you broadcast a local RTMP stream to the internet — without port forwarding, a static IP, or a paid streaming service. It runs a local [MediaMTX](https://github.com/bluenviron/mediamtx) relay and punches a secure public URL through [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/), giving you a shareable RTMP endpoint from any machine in seconds.
 
-This repo currently includes:
+## Download
 
-- Vite + React UI shell
-- Neutralino runtime orchestration
-- MediaMTX relay assets
-- Bun MP3 helper source + build pipeline
-- Cloudflare tunnel onboarding/runtime wiring
+| Platform | Installer |
+|---|---|
+| macOS (Apple Silicon + Intel) | [RelyyCast.pkg](https://downloads.relyycast.app/mac/latest/RelyyCast.pkg) |
+| Windows 64-bit | [relyycast-setup.exe](https://downloads.relyycast.app/windows/latest/relyycast-setup.exe) |
 
-Setup guide for new machines:
+SHA-256 checksums are published alongside each release:
 
-- `docs/public/new-machine-setup.md`
+- `https://downloads.relyycast.app/mac/latest/RelyyCast.pkg.sha256`
+- `https://downloads.relyycast.app/windows/latest/relyycast-setup.exe.sha256`
 
-Consumer troubleshooting guide (no code access required):
+## How it works
 
-- `docs/public/consumer-troubleshooting-guide.md`
+1. Launch RelyyCast — a local MediaMTX relay starts immediately.
+2. Point your encoder (OBS, ffmpeg, hardware encoder) at `rtmp://localhost:1935/live`.
+3. Optionally connect Cloudflare to get a public `rtmps://` endpoint with a temporary `trycloudflare.com` URL or your own custom domain.
+4. Share the URL with your audience or downstream ingest.
 
-## Canonical runtime dependencies
+No cloud account is required for local relay. Cloudflare is opt-in and consent-first.
 
-Runtime dependency binaries are sourced from a single canonical inventory folder:
+## Open source
 
-- `binaries/`
+RelyyCast is MIT-licensed. The Cloudflare Tunnel integration is the default, but the architecture is intentionally open — if you'd rather use [ngrok](https://ngrok.com), [Tailscale Funnel](https://tailscale.com/kb/1223/funnel), a self-hosted WireGuard gateway, or any other tunnel service, you can fork this repo and wire in your own provider. The relay core (MediaMTX config, process supervision, runtime orchestration) is fully independent of the tunnel layer.
 
-This folder structure is committed to git, but binary payloads are not.
+The tunnel interface lives in:
 
-For host setup, place binaries in these paths:
+- [`src/runtime/cloudflared-onboarding.ts`](src/runtime/cloudflared-onboarding.ts)
+- [`src/runtime/orchestrator/runtime-launch-resolvers.ts`](src/runtime/orchestrator/runtime-launch-resolvers.ts)
 
-- `binaries/mediamtx/mediamtx.yml`
-- macOS:
-	- `binaries/mediamtx/mac/mediamtx`
-	- `binaries/cloudflared/mac/cloudflared`
-	- `binaries/mp3-helper/mac/relyy-mp3-helper` (optional)
-- Windows:
-	- `binaries/mediamtx/win/mediamtx.exe`
-	- `binaries/cloudflared/win/cloudflared.exe`
-	- `binaries/mp3-helper/win/relyy-mp3-helper.exe` (optional)
+## Update manifest
 
-Before running app/build/packaging commands:
+RelyyCast publishes a stable `latest.json` at the root of each platform path so apps and scripts can check for updates:
 
-```bash
-npm run deps:seed
-npm run deps:preflight
-npm run deps:stage
+- `https://downloads.relyycast.app/mac/latest.json`
+- `https://downloads.relyycast.app/windows/latest.json`
+
+```json
+{
+  "product": "relyycast",
+  "version": "0.1.0",
+  "releaseDate": "2026-04-18",
+  "platform": "mac",
+  "fileName": "RelyyCast.pkg",
+  "url": "https://downloads.relyycast.app/mac/0.1.0/RelyyCast.pkg",
+  "sha256": "<hex>",
+  "fileSizeBytes": 0
+}
 ```
 
-`deps:preflight` also checks for global Bun and prints install instructions if missing.
+---
 
-### macOS developer notes
+## Developer setup
 
-- Recommended bootstrap sequence:
+### Prerequisites
+
+- Node.js 20+
+- macOS or Windows build host
+- Runtime binaries in `binaries/` (see below)
+
+### Canonical runtime dependencies
+
+Binary payloads are not committed to git. Place them at:
+
+| File | macOS | Windows |
+|---|---|---|
+| MediaMTX config | `binaries/mediamtx/mediamtx.yml` | same |
+| MediaMTX binary | `binaries/mediamtx/mac/mediamtx` | `binaries/mediamtx/win/mediamtx.exe` |
+| cloudflared binary | `binaries/cloudflared/mac/cloudflared` | `binaries/cloudflared/win/cloudflared.exe` |
+
+### Bootstrap (macOS)
 
 ```bash
 npm install
@@ -60,16 +82,7 @@ npm run deps:stage
 npm run neutralino:run
 ```
 
-- Quick checks:
-
-```bash
-ls -l binaries/mediamtx/mac/mediamtx binaries/cloudflared/mac/cloudflared
-ls -l build/mediamtx/mac/mediamtx build/bin/cloudflared
-```
-
-### Windows developer notes
-
-- Recommended bootstrap sequence (PowerShell):
+### Bootstrap (Windows / PowerShell)
 
 ```powershell
 npm install
@@ -79,105 +92,55 @@ npm run deps:stage
 npm run neutralino:run
 ```
 
-- Quick checks (PowerShell):
+### Common commands
 
-```powershell
-Get-Item binaries/mediamtx/win/mediamtx.exe, binaries/cloudflared/win/cloudflared.exe
-Get-Item build/mediamtx/win/mediamtx.exe, build/bin/cloudflared.exe
+```bash
+npm run dev                  # Vite dev server only
+npm run neutralino:run       # Full desktop app (dev)
+npm run build                # Build web assets + stage runtime deps
+npm run neutralino:build     # Package Neutralino app
+npm run installer:build      # Build platform installer (.pkg / .exe)
+npm run release:upload:r2    # Upload release artifact + update latest.json
+npm run deps:preflight       # Verify runtime binaries are present
+npm run deps:seed            # Seed binaries/ from legacy locations
+npm run deps:stage           # Stage binaries into build/
+npm run ffmpeg:detect        # Check for FFmpeg on host
+npm run lint                 # ESLint
 ```
 
-## Cloudflare onboarding behavior
+### Release flow
 
-Cloudflare setup is consent-first and local-first:
+```bash
+npm run version:bump:decimal           # x.y.z -> x.y.(z+1)
+npm run installer:build
+npm run release:upload:r2
+```
 
-- On first launch, runtime starts local MediaMTX + FFmpeg + Bun helper immediately.
-- Cloudflare remains in `pending-consent` until the user explicitly clicks **Connect Cloudflare** in the Runtime panel.
-- Cloudflare access mode is explicit in Settings: **Temporary URL** for `trycloudflare.com`, or **Custom Domain** for a Cloudflare-managed hostname.
-- If no Cloudflare hostname is configured yet, that same action starts a temporary `trycloudflare.com` URL instead of forcing named-tunnel login.
-- If the user clicks **Skip for now**, runtime stays in local mode with no repeated login popups.
-- If login/provisioning fails, runtime surfaces actionable status and supports **Retry Cloudflare setup**.
-- After onboarding completes once, restart/relaunch reuses local artifacts and starts `cloudflared` without re-consent.
+The upload script pushes the installer, a `.sha256` checksum file, a versioned `manifest.json`, and an updated `latest.json` to the configured R2 bucket. Set these env vars (or add them to `.env.release.local`):
 
-Persisted Cloudflare artifacts are local app-data/runtime files only:
+```
+S3_ENDPOINT=
+S3_BUCKET=
+S3_KEY=
+S3_SECRET=
+S3_PREFIX=          # optional key prefix
+S3_REGION=          # optional, defaults to auto
+S3_PUBLIC_URL=      # public base URL for generated download links
+```
+
+### Cloudflare onboarding behavior
+
+- On first launch, MediaMTX starts immediately in local-only mode.
+- Cloudflare stays in `pending-consent` until the user clicks **Connect Cloudflare**.
+- Mode is explicit in Settings: **Temporary URL** (`trycloudflare.com`) or **Custom Domain**.
+- If the user clicks **Skip for now**, the app stays in local mode — no repeated prompts.
+- After onboarding completes once, relaunch reuses local credentials without re-consent.
+
+Persisted Cloudflare artifacts (stored in local app-data):
 
 - `cert.pem`
-- tunnel credentials JSON (`<tunnel-id>.json`)
-- generated `config.yml`
-- runtime metadata (`runtime-state.json`)
+- Tunnel credentials JSON (`<tunnel-id>.json`)
+- Generated `config.yml`
+- Runtime metadata (`runtime-state.json`)
 
-This pass does not capture or persist Cloudflare account auth tokens beyond `cloudflared`'s normal local files.
-
-## Development commands
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Run the web UI (dev):
-
-```bash
-npm run dev
-```
-
-Run the Neutralino desktop shell:
-
-```bash
-npm run neutralino:run
-```
-
-Preflight runtime dependencies only:
-
-```bash
-npm run deps:preflight
-```
-
-Seed canonical `binaries/` inventory from legacy locations in this repo:
-
-```bash
-npm run deps:seed
-```
-
-Stage runtime dependencies from canonical inventory to `build/`:
-
-```bash
-npm run deps:stage
-```
-
-Update Neutralino runtime binary:
-
-```bash
-npm run neutralino:update
-```
-
-Build web assets + stage runtime assets:
-
-```bash
-npm run build
-```
-
-Build packaged Neutralino app:
-
-```bash
-npm run neutralino:build
-```
-
-Build Bun MP3 helper binaries:
-
-```bash
-npm run mp3-helper:build
-npm run mp3-helper:build:all
-```
-
-Lint:
-
-```bash
-npm run lint
-```
-
-Run local preview of production build:
-
-```bash
-npm run start
-```
+No Cloudflare account tokens are captured beyond what `cloudflared` writes locally.

@@ -311,9 +311,20 @@ async function main() {
   );
 
   const publicUrl = buildPublicUrl(process.env.S3_PUBLIC_URL, bucket, objectKey);
+  const latestKey = joinObjectKey(basePrefix, platform, "latest.json");
+  const latestPayload = {
+    ...metadata,
+    url: publicUrl || null,
+  };
+  await uploadObject(s3, bucket, latestKey, JSON.stringify(latestPayload, null, 2), "application/json; charset=utf-8");
+
   console.log("[release:r2] Upload complete.");
   if (publicUrl) {
     console.log("[release:r2] Public URL:", publicUrl);
+  }
+  const latestPublicUrl = buildPublicUrl(process.env.S3_PUBLIC_URL, bucket, latestKey);
+  if (latestPublicUrl) {
+    console.log("[release:r2] Latest manifest:", latestPublicUrl);
   }
 }
 

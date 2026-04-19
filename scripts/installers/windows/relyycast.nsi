@@ -134,16 +134,6 @@ SectionGroup /e "Shortcuts" SEC_GRP_SHORTCUTS
 SectionGroupEnd
 
 ; -----------------------------------------------------------------------
-; Section: MP3 Helper (optional, unchecked by default)
-; -----------------------------------------------------------------------
-!ifndef SKIP_MP3_HELPER
-Section /o "MP3 Helper" SEC_MP3HELPER
-  SetOutPath "$INSTDIR\build\bin"
-  File "${DIST_SRC}\build\bin\relyy-mp3-helper.exe"
-SectionEnd
-!endif
-
-; -----------------------------------------------------------------------
 ; Component Descriptions
 ; -----------------------------------------------------------------------
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
@@ -151,9 +141,6 @@ SectionEnd
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_GRP_SHORTCUTS} "Create shortcuts for quick access to ${APP_NAME}."
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_STARTMENU}    "Add ${APP_NAME} to the Start Menu."
   !insertmacro MUI_DESCRIPTION_TEXT ${SEC_DESKTOP}      "Add a shortcut to your Desktop."
-  !ifndef SKIP_MP3_HELPER
-  !insertmacro MUI_DESCRIPTION_TEXT ${SEC_MP3HELPER}    "Installs the Bun-based MP3 helper for real-time MP3 streaming. Optional — only needed if you plan to use MP3 audio output."
-  !endif
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; -----------------------------------------------------------------------

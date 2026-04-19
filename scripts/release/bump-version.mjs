@@ -151,7 +151,7 @@ function updateMacDistribution(version) {
   const filePath = path.join(REPO_ROOT, "scripts", "installers", "mac", "distribution.xml");
 
   updateTextFile(filePath, (content) =>
-    replaceAllOrThrow(content, /(pkg-ref id="com\.relyycast\.app\.(?:core|mp3helper|uninstall)"\s+version=")\d+\.\d+\.\d+("\s+onConclusion="none">)/g, `$1${version}$2`, "pkg-ref versions in distribution.xml"),
+    replaceAllOrThrow(content, /(pkg-ref id="com\.relyycast\.app\.(?:core|uninstall)"\s+version=")\d+\.\d+\.\d+("\s+onConclusion="none">)/g, `$1${version}$2`, "pkg-ref versions in distribution.xml"),
   );
 }
 

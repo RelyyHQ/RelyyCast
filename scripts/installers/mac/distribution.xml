@@ -6,7 +6,7 @@
 
     <!-- Allow install to the system volume only -->
     <domains enable_localSystem="true" enable_currentUserHome="false"/>
-    <!-- Always show component customization so users can explicitly choose MP3 helper -->
+    <!-- Always show component customization -->
     <options customize="always" require-scripts="false" rootVolumeOnly="true"/>
 
     <!-- Wizard pages -->
@@ -16,7 +16,6 @@
     <!-- Component tree shown on "Installation Type" page -->
     <choices-outline>
         <line choice="com.relyycast.app.core"/>
-        <line choice="com.relyycast.app.mp3helper"/>
         <line choice="com.relyycast.app.uninstall"/>
     </choices-outline>
 
@@ -30,16 +29,6 @@
         <pkg-ref id="com.relyycast.app.core"/>
     </choice>
 
-    <!-- Optional: MP3 Helper -->
-    <choice id="com.relyycast.app.mp3helper"
-            title="MP3 Helper"
-            description="Enables real-time MP3 streaming output. Optional — only install this if you plan to use MP3 audio format."
-            start_enabled="true"
-            start_visible="true"
-            start_selected="false">
-        <pkg-ref id="com.relyycast.app.mp3helper"/>
-    </choice>
-
     <!-- Uninstall helper script -->
     <choice id="com.relyycast.app.uninstall"
             title="Uninstall Script"
@@ -51,7 +40,6 @@
     </choice>
 
     <pkg-ref id="com.relyycast.app.core"      version="0.1.0" onConclusion="none">RelyyCast-core.pkg</pkg-ref>
-    <pkg-ref id="com.relyycast.app.mp3helper" version="0.1.0" onConclusion="none">RelyyCast-mp3helper.pkg</pkg-ref>
     <pkg-ref id="com.relyycast.app.uninstall" version="0.1.0" onConclusion="none">RelyyCast-uninstall.pkg</pkg-ref>
 
 </installer-gui-script>

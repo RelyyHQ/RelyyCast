@@ -5,7 +5,6 @@
  * The app's runtime resolver looks for:
  *   {NL_PATH}/build/mediamtx/<platform>/mediamtx[.exe]
  *   {NL_PATH}/build/bin/cloudflared[.exe]
- *   {NL_PATH}/build/bin/relyy-mp3-helper[.exe]
  */
 
 import path from "node:path";
@@ -31,7 +30,6 @@ function getPlatformFolder() {
 function getHostBinaryNames() {
   return {
     cloudflaredBinaryName: process.platform === "win32" ? "cloudflared.exe" : "cloudflared",
-    mp3HelperBinaryName: process.platform === "win32" ? "relyy-mp3-helper.exe" : "relyy-mp3-helper",
   };
 }
 
@@ -99,17 +97,11 @@ async function main() {
   }
 
   // bin — copy only host binaries expected by runtime/installer.
-  const { cloudflaredBinaryName, mp3HelperBinaryName } = getHostBinaryNames();
+  const { cloudflaredBinaryName } = getHostBinaryNames();
   const cloudflaredSrc = path.resolve(BUILD_ROOT, "bin", cloudflaredBinaryName);
   const cloudflaredDest = path.resolve(DIST_APP_ROOT, "build", "bin", cloudflaredBinaryName);
   if (await copyIfPresent(cloudflaredSrc, cloudflaredDest)) {
     staged.push(`build/bin/${cloudflaredBinaryName}`);
-  }
-
-  const mp3HelperSrc = path.resolve(BUILD_ROOT, "bin", mp3HelperBinaryName);
-  const mp3HelperDest = path.resolve(DIST_APP_ROOT, "build", "bin", mp3HelperBinaryName);
-  if (await copyIfPresent(mp3HelperSrc, mp3HelperDest)) {
-    staged.push(`build/bin/${mp3HelperBinaryName}`);
   }
 
   if (!staged.length) {

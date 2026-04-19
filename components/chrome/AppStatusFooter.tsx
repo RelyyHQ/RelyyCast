@@ -14,10 +14,13 @@ export default function AppStatusFooter({
   leftStatusValue,
   badges,
 }: Readonly<AppStatusFooterProps>) {
+
+  
+  const updateAvailable = badges.some((badge) => badge.label === "Update" && badge.value === "Available");
   return (
     <footer className="flex items-center gap-2 border-t border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface))] px-2.5 py-1.5">
       <span className="rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[hsl(var(--theme-muted))]">
-        {leftStatusLabel}
+        {updateAvailable ? "Update Available" : leftStatusLabel}
       </span>
 
       <span className="min-w-0 truncate text-[11px] leading-4 text-[hsl(var(--theme-muted))]">

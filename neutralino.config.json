@@ -50,7 +50,7 @@
       "fullScreen": false,
       "maximize": false,
       "useSavedState": false,
-      "exitProcessOnClose": true,
+      "exitProcessOnClose": false,
       "enableInspector": true,
       "injectGlobals": true,
       "injectClientLibrary": true

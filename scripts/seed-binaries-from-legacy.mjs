@@ -96,16 +96,6 @@ async function main() {
     misses.push(path.relative(REPO_ROOT, cloudflaredDest));
   }
 
-  const mp3HelperBinaryName = platform === "win" ? "relyy-mp3-helper.exe" : "relyy-mp3-helper";
-  const mp3HelperDest = path.resolve(REPO_ROOT, "binaries", "mp3-helper", localPlatform, mp3HelperBinaryName);
-  const mp3Helper = await copyIfMissing(mp3HelperDest, [
-    path.resolve(REPO_ROOT, "build", "bin", mp3HelperBinaryName),
-    path.resolve(REPO_ROOT, "runtime", "bun-mp3-helper", "dist", "host", mp3HelperBinaryName),
-  ]);
-  if (mp3Helper.copied) {
-    copies.push([mp3Helper.source, mp3HelperDest]);
-  }
-
   if (copies.length) {
     console.log("[deps:seed] copied legacy assets into binaries inventory:");
     for (const [source, dest] of copies) {

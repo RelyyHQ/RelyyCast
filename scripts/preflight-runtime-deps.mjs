@@ -1,22 +1,11 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import Neutralino from "@relyycast/neutralino";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 const BINARIES_MANIFEST_PATH = path.resolve(REPO_ROOT, "binaries", "manifest.json");
-
-let tray = {
-  icon: "/resources/icons/trayIcon.png",
-  menuItems: [
-    {id: "open", text: "Open App"},
-    {id: "sep", text: "-"},
-    {id: "quit", text: "Quit"}
-  ]
-};
 
 
 
@@ -65,58 +54,6 @@ async function readManifest() {
   }
 
   return parsed.assets;
-}
-
-function resolveBunExecutable() {
-  if (process.env.BUN_BIN?.trim() && existsSync(process.env.BUN_BIN.trim())) {
-    return process.env.BUN_BIN.trim();
-  }
-
-  if (process.platform === "win32") {
-    const userProfile = process.env.USERPROFILE ?? "";
-    const candidates = [
-      userProfile ? path.resolve(userProfile, ".bun", "bin", "bun.exe") : "",
-      userProfile
-        ? path.resolve(
-          userProfile,
-          "AppData",
-          "Local",
-          "Microsoft",
-          "WinGet",
-          "Packages",
-          "Oven-sh.Bun_Microsoft.Winget.Source_8wekyb3d8bbwe",
-          "bun-windows-x64",
-          "bun.exe",
-        )
-        : "",
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  } else {
-    const home = process.env.HOME ?? "";
-    const candidates = [
-      home ? path.resolve(home, ".bun", "bin", "bun") : "",
-      "/opt/homebrew/bin/bun",
-      "/usr/local/bin/bun",
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  }
-
-  const probe = spawnSync("bun", ["--version"], { stdio: "pipe" });
-  if (probe.status === 0) {
-    return "bun";
-  }
-
-  return null;
 }
 
 async function main() {
@@ -170,19 +107,6 @@ async function main() {
     for (const missing of optionalMissing) {
       console.warn(`  - ${missing}`);
     }
-  }
-
-  const bunExecutable = resolveBunExecutable();
-  if (!bunExecutable) {
-    console.warn("[preflight] Bun is not available globally.");
-    console.warn("[preflight] install Bun globally to use MP3 helper development workflows:");
-    if (process.platform === "win32") {
-      console.warn("  powershell -c \"irm bun.sh/install.ps1 | iex\"");
-    } else {
-      console.warn("  curl -fsSL https://bun.com/install | bash");
-    }
-  } else {
-    console.log(`[preflight] Bun: ${bunExecutable}`);
   }
 
   if (requiredMissing.length) {

@@ -1,10 +1,8 @@
 import type { CloudflareOnboardingState } from "../cloudflared-onboarding";
 
 export type ManagedProcessName =
-  | "mp3Helper"
   | "mediamtx"
   | "ffmpegIngest"
-  | "ffmpegMp3Bridge"
   | "cloudflared";
 
 export type RuntimeProcessState = {
@@ -34,10 +32,6 @@ export type RuntimeConfig = {
   ffmpegPath: string;
   mediamtxPath: string;
   mediamtxConfigPath: string;
-  mp3HelperPath: string;
-  mp3HelperHost: string;
-  mp3HelperPort: number;
-  mp3MountPath: string;
   relayRtmpOrigin: string;
   sampleRate: string;
   channels: string;
@@ -98,24 +92,18 @@ export type ProcessStoppedOptions = {
 
 export const APP_DATA_DIRECTORY_NAME = "relyycast";
 export const RUNTIME_STATE_FILE_NAME = "runtime-state.json";
-export const DEFAULT_MOUNT_PATH = "/live.mp3";
-export const DEFAULT_MP3_HELPER_PORT = 8177;
 export const DEFAULT_RELAY_RTMP_ORIGIN = "rtmp://127.0.0.1:1935";
 export const PROCESS_STOP_TIMEOUT_MS = 2000;
 
 export const PROCESS_START_ORDER: ManagedProcessName[] = [
-  "mp3Helper",
   "mediamtx",
   "ffmpegIngest",
-  "ffmpegMp3Bridge",
   "cloudflared",
 ];
 
 export const PROCESS_RESTART_BACKOFF_MS: Record<ManagedProcessName, number> = {
-  mp3Helper: 2000,
   mediamtx: 3000,
   ffmpegIngest: 2000,
-  ffmpegMp3Bridge: 2000,
   cloudflared: 10_000,
 };
 

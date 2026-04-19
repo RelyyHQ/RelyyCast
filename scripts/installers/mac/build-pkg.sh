@@ -211,9 +211,7 @@ sign_binary() {
     local entitlements="${2:-}"
     if $SKIP_APP_SIGN; then return 0; fi
 
-    # Some prebuilt binaries (notably Bun-compiled helpers) can contain a stale
-    # signature blob that causes "invalid or unsupported format for signature".
-    # Removing any existing signature first makes re-signing deterministic.
+    # Remove any existing signature first so re-signing is deterministic.
     codesign --remove-signature "$binary" >/dev/null 2>&1 || true
 
     if [ -n "$entitlements" ]; then
@@ -242,28 +240,6 @@ require_file "$DIST_SRC/resources.neu"
 require_file "$DIST_SRC/build/mediamtx/mac/mediamtx"
 require_file "$DIST_SRC/build/mediamtx/mediamtx.yml"
 require_file "$DIST_SRC/build/bin/cloudflared"
-
-MP3_HELPER="$DIST_SRC/build/bin/relyy-mp3-helper"
-HAS_MP3_HELPER=false
-if [ -f "$MP3_HELPER" ]; then
-    HAS_MP3_HELPER=true
-    if ! $SKIP_APP_SIGN; then
-        TMP_MP3_SIGN_CHECK="$(mktemp /tmp/relyycast-mp3-signcheck.XXXXXX)"
-        cp "$MP3_HELPER" "$TMP_MP3_SIGN_CHECK"
-        codesign --remove-signature "$TMP_MP3_SIGN_CHECK" >/dev/null 2>&1 || true
-        if ! codesign --force --sign "$SIGN_APP" --timestamp "$TMP_MP3_SIGN_CHECK" >/dev/null 2>&1; then
-            HAS_MP3_HELPER=false
-            log "WARNING: MP3 helper found but cannot be code-signed on this machine — skipping optional component package"
-        else
-            log "MP3 helper found — will build optional component package"
-        fi
-        rm -f "$TMP_MP3_SIGN_CHECK"
-    else
-        log "MP3 helper found — will build optional component package"
-    fi
-else
-    log "MP3 helper not found — skipping optional component package"
-fi
 
 # -----------------------------------------------------------------------
 # Clean staging
@@ -363,35 +339,6 @@ pkgbuild \
 log "  core pkg: $CORE_PKG"
 
 # -----------------------------------------------------------------------
-# pkgbuild: optional MP3 helper component pkg
-# -----------------------------------------------------------------------
-MP3_PKG="$STAGING/RelyyCast-mp3helper.pkg"
-
-if $HAS_MP3_HELPER; then
-    log "Building MP3 helper component package..."
-
-    MP3_ROOT="$STAGING/_mp3-root"
-    mkdir -p "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin"
-    cp "$MP3_HELPER" "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper"
-    chmod +x "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper"
-
-    if ! $SKIP_APP_SIGN; then
-        sign_binary \
-            "$MP3_ROOT/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper" \
-            "$CHILD_ENTITLEMENTS"
-    fi
-
-    pkgbuild \
-        --root "$MP3_ROOT" \
-        --identifier "${BUNDLE_ID}.mp3helper" \
-        --version "$APP_VERSION" \
-        --install-location "/" \
-        "$MP3_PKG"
-
-    log "  mp3helper pkg: $MP3_PKG"
-fi
-
-# -----------------------------------------------------------------------
 # pkgbuild: uninstall helper component pkg
 # -----------------------------------------------------------------------
 UNINSTALL_PKG="$STAGING/RelyyCast-uninstall.pkg"
@@ -418,16 +365,8 @@ mkdir -p "$PKG_RESOURCES"
 cp "$SCRIPT_DIR/welcome.html"     "$PKG_RESOURCES/welcome.html"
 cp "$REPO_ROOT/LICENSE"           "$PKG_RESOURCES/LICENSE"
 
-# Patch distribution.xml: remove mp3helper line if binary not present
 DIST_XML="$PKG_RESOURCES/distribution.xml"
 cp "$SCRIPT_DIR/distribution.xml" "$DIST_XML"
-
-if ! $HAS_MP3_HELPER; then
-    # Remove mp3helper choice and pkg-ref entries from distribution
-    sed -i '' '/<line choice="com.relyycast.app.mp3helper"/d' "$DIST_XML"
-    sed -i '' '/<choice id="com.relyycast.app.mp3helper"/,/<\/choice>/d' "$DIST_XML"
-    sed -i '' '/<pkg-ref id="com.relyycast.app.mp3helper"/d' "$DIST_XML"
-fi
 
 UNSIGNED_PKG="$DIST_OUT/RelyyCast-unsigned.pkg"
 FINAL_PKG="$DIST_OUT/RelyyCast.pkg"

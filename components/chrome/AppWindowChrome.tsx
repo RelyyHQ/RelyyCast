@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { Minimize2, Moon, Sun, X } from "lucide-react";
+import { BadgeQuestionMark, CircleQuestionMark, Minimize2, Moon, Sun, X } from "lucide-react";
 import {
-  app as nlApp,
   window as nlWindow,
   init as nlInit,
+  os as nlOs,
 } from "@neutralinojs/lib";
+import { showTrayCloseHintOnce } from "@/src/runtime/tray-close-hint";
 
 type DetectedPlatform = "windows" | "macos" | "linux" | "unknown";
 
@@ -118,6 +119,7 @@ export default function AppWindowChrome({
 }: Readonly<AppWindowChromeProps>) {
   const [neutralinoReady, setNeutralinoReady] = useState(false);
   const [platform, setPlatform] = useState<DetectedPlatform>("unknown");
+  const [showHelp, setShowHelp] = useState(false);
   const dragRegionRegisteredRef = useRef(false);
   const dragFallbackEnabledRef = useRef(false);
 
@@ -273,11 +275,12 @@ export default function AppWindowChrome({
   const onClose = useCallback(async () => {
     if (neutralinoReady) {
       try {
-        console.info("[AppWindowChrome] close requested.");
-        await nlApp.exit();
+        console.info("[AppWindowChrome] close requested; hiding to tray.");
+        await nlWindow.hide();
+        void showTrayCloseHintOnce();
         return;
       } catch (error) {
-        console.error("[AppWindowChrome] close failed.", error);
+        console.error("[AppWindowChrome] hide-to-tray failed.", error);
       }
     }
 
@@ -305,6 +308,40 @@ export default function AppWindowChrome({
       console.error("[AppWindowChrome] beginDrag fallback failed.", error);
     }
   }, [neutralinoReady]);
+  const handleOpenHelp = useCallback(() => {
+    setShowHelp(!showHelp);
+    //renderHelpMenu()
+  }, [showHelp]);
+
+
+  const handleOpenLink = useCallback(async ({ link }: { link: string }) => {
+    console.info(`[AppWindowChrome] openLink click: ${link}`);
+
+    let url: URL;
+    try {
+      url = new URL(link);
+    } catch (error) {
+      console.warn(`[AppWindowChrome] openLink(${link}) invalid URL.`, error);
+      return;
+    }
+
+    if (!(["http:", "https:"].includes(url.protocol))) {
+      console.warn(`[AppWindowChrome] openLink(${link}) blocked protocol: ${url.protocol}`);
+      return;
+    }
+
+    try {
+      if (neutralinoReady) {
+        await nlOs.open(url.href);
+        return;
+      }
+      console.warn(`[AppWindowChrome] openLink(${url.href}) using browser fallback; Neutralino not ready.`);
+    } catch (error) {
+      console.error(`[AppWindowChrome] nlOs.open(${url.href}) failed; using browser fallback.`, error);
+    }
+
+    window.open(url.href, "_blank", "noopener,noreferrer");
+  }, [neutralinoReady]);
 
   return (
     <header
@@ -312,8 +349,50 @@ export default function AppWindowChrome({
       onMouseDown={(event) => {
         void onHeaderMouseDown(event);
       }}
-      className="flex items-center gap-2 border-b border-[hsl(var(--theme-border))] px-2.5 py-2"
+      className="flex items-center gap-2 border-b border-[hsl(var(--theme-border))] px-2.5 py-2 relative select-none [-webkit-app-region:drag]"
     >
+
+      <div
+        data-no-drag="true"
+        aria-hidden={!showHelp}
+        onMouseDown={(event) => {
+          event.stopPropagation();
+        }}
+        className={`absolute right-2 top-full mt-1 w-48 rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] p-2 text-sm text-[hsl(var(--theme-muted))] shadow-lg [-webkit-app-region:no-drag] ${showHelp ? "block" : "hidden"}`}
+      >
+        <p className="mb-2 flex items-center gap-1">
+          <BadgeQuestionMark className="w-4 h-4"/>
+          Need help?
+        </p>
+        <ul className="space-y-1">
+          <li>
+            <button
+              type="button"
+              data-no-drag="true"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={() => handleOpenLink({ link: "https://relyy.app/docs" })}
+              className="block w-full rounded-sm px-2 py-1 text-left hover:bg-white/10"
+            >
+              Documentation
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              data-no-drag="true"
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={() => handleOpenLink({ link: "https://relyy.app/support" })}
+              className="block w-full rounded-sm px-2 py-1 text-left hover:bg-white/10"
+            >
+              Support
+            </button>
+          </li>
+        </ul>
+      </div>
       <div className="flex min-w-0 items-center gap-2.5">
        <img src="/favicon.ico" alt="App icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] text-[10px] font-black tracking-[0.2em] text-[hsl(var(--theme-primary))]" />
       
@@ -333,7 +412,16 @@ export default function AppWindowChrome({
         <span suppressHydrationWarning className="rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--theme-muted))]">
           {currentDateLabel}
         </span>
-
+        <button
+          id="help-button"
+          data-no-drag="true"
+          type="button"
+          onClick={handleOpenHelp}
+          title="Help / Documentation"
+          className="inline-flex h-7 items-center justify-center rounded-sm border border-[hsl(var(--theme-border))] bg-[hsl(var(--theme-surface-alt))] px-2.5 text-[10px] font-semibold transition-colors hover:bg-white/70 dark:hover:bg-white/5"
+        >
+          <CircleQuestionMark className="w-3.5 h-3.5"/>
+        </button>
         <button
           id="theme-toggle"
           data-no-drag="true"

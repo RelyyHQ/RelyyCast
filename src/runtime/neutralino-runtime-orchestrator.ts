@@ -1,4 +1,9 @@
-import { events } from "@neutralinojs/lib";
+import {
+  app,
+  events,
+  os,
+  window as nlWindow,
+} from "@neutralinojs/lib";
 import { RuntimeProcessSupervisor } from "./orchestrator/runtime-process-supervisor";
 import {
   normalizeRuntimeConfig,
@@ -6,6 +11,7 @@ import {
   setStoppedProcessState,
 } from "./orchestrator/runtime-state";
 import { RuntimeStateStore } from "./orchestrator/runtime-state-store";
+import { showTrayCloseHintOnce } from "./tray-close-hint";
 import {
   RUNTIME_STATE_EVENT_NAME,
   type RuntimeConfig,
@@ -27,6 +33,17 @@ const stateStore = new RuntimeStateStore();
 let runtimeStartPromise: Promise<void> | null = null;
 let runtimeStopping = false;
 let listenersBound = false;
+let appExitRequested = false;
+let trayInitialized = false;
+
+const TRAY_ITEM_SHOW = "show";
+const TRAY_ITEM_HIDE = "hide";
+const TRAY_ITEM_EXIT = "exit";
+
+type TrayMenuItemClickedDetail = {
+  id?: unknown;
+  text?: unknown;
+};
 
 const processSupervisor = new RuntimeProcessSupervisor({
   getRuntimeState: () => stateStore.getRuntimeState(),
@@ -36,11 +53,84 @@ const processSupervisor = new RuntimeProcessSupervisor({
   getMergedProcessEnvs: (overrides) => stateStore.getMergedProcessEnvs(overrides),
 });
 
+function parseTrayItemId(detail: TrayMenuItemClickedDetail | undefined) {
+  if (!detail) {
+    return "";
+  }
+
+  if (typeof detail.id === "string" && detail.id.trim().length > 0) {
+    return detail.id.trim().toLowerCase();
+  }
+
+  if (typeof detail.text === "string" && detail.text.trim().length > 0) {
+    return detail.text.trim().toLowerCase();
+  }
+
+  return "";
+}
+
+async function showMainWindow() {
+  try {
+    await nlWindow.show();
+    await nlWindow.focus();
+  } catch (error) {
+    console.warn("[runtime] failed to show main window from tray:", error);
+  }
+}
+
+async function hideMainWindow() {
+  try {
+    await nlWindow.hide();
+  } catch (error) {
+    console.warn("[runtime] failed to hide main window to tray:", error);
+  }
+}
+
+async function setupTrayMenu() {
+  if (trayInitialized) {
+    return;
+  }
+
+  try {
+    await os.setTray({
+      icon: "/favicon.ico",
+      menuItems: [
+        { id: TRAY_ITEM_SHOW, text: "Show App" },
+        { id: TRAY_ITEM_HIDE, text: "Hide App" },
+        { id: TRAY_ITEM_EXIT, text: "Exit" },
+      ],
+    });
+    trayInitialized = true;
+  } catch (error) {
+    console.warn("[runtime] failed to initialize tray menu:", error);
+  }
+}
+
+async function requestApplicationExit(reason: string) {
+  if (appExitRequested) {
+    return;
+  }
+  appExitRequested = true;
+
+  try {
+    await stopRuntimeOrchestration(reason);
+  } finally {
+    try {
+      await app.exit();
+    } catch (error) {
+      console.error("[runtime] failed to exit app:", error);
+      appExitRequested = false;
+    }
+  }
+}
+
 function bindRuntimeListeners() {
   if (listenersBound) {
     return;
   }
   listenersBound = true;
+
+  void setupTrayMenu();
 
   void events.on(
     "spawnedProcess",
@@ -48,9 +138,33 @@ function bindRuntimeListeners() {
       processSupervisor.handleSpawnedProcessEvent(event as CustomEvent<SpawnedProcessEventDetail>);
     }) as unknown as (event: CustomEvent) => void,
   );
-  void events.on("windowClose", () => {
-    void stopRuntimeOrchestration("windowClose");
-  });
+  void events.on(
+    "trayMenuItemClicked",
+    ((event: CustomEvent) => {
+      const detail = event.detail as TrayMenuItemClickedDetail | undefined;
+      const menuItemId = parseTrayItemId(detail);
+
+      if (menuItemId === TRAY_ITEM_SHOW || menuItemId === "show app") {
+        void showMainWindow();
+        return;
+      }
+      if (menuItemId === TRAY_ITEM_HIDE || menuItemId === "hide app") {
+        void hideMainWindow();
+        return;
+      }
+      if (menuItemId === TRAY_ITEM_EXIT || menuItemId === "quit") {
+        void requestApplicationExit("tray-exit");
+      }
+    }) as unknown as (event: CustomEvent) => void,
+  );
+  void events.on(
+    "windowClose",
+    ((event: CustomEvent) => {
+      event.preventDefault();
+      void hideMainWindow();
+      void showTrayCloseHintOnce();
+    }) as unknown as (event: CustomEvent) => void,
+  );
 
   window.addEventListener("beforeunload", () => {
     void stopRuntimeOrchestration("beforeunload");

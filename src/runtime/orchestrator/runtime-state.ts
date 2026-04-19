@@ -1,7 +1,5 @@
 import type { CloudflareOnboardingState } from "../cloudflared-onboarding";
 import {
-  DEFAULT_MOUNT_PATH,
-  DEFAULT_MP3_HELPER_PORT,
   DEFAULT_RELAY_RTMP_ORIGIN,
   type CloudflareMode,
   type ProcessStoppedOptions,
@@ -46,10 +44,6 @@ function createDefaultConfig(): RuntimeConfig {
     ffmpegPath: "",
     mediamtxPath: "",
     mediamtxConfigPath: "",
-    mp3HelperPath: "",
-    mp3HelperHost: "127.0.0.1",
-    mp3HelperPort: DEFAULT_MP3_HELPER_PORT,
-    mp3MountPath: DEFAULT_MOUNT_PATH,
     relayRtmpOrigin: DEFAULT_RELAY_RTMP_ORIGIN,
     sampleRate: "44100",
     channels: "2",
@@ -99,10 +93,8 @@ export function createRuntimeStateTemplate(appDataDirectory: string, stateFilePa
     config: createDefaultConfig(),
     cloudflare: createDefaultCloudflareState(),
     processes: {
-      mp3Helper: createProcessState(),
       mediamtx: createProcessState(),
       ffmpegIngest: createProcessState(),
-      ffmpegMp3Bridge: createProcessState(),
       cloudflared: createProcessState(),
     },
   };
@@ -134,24 +126,6 @@ export function normalizeRelayPath(value: unknown) {
     return "live";
   }
   return relayPath;
-}
-
-export function normalizeMountPath(value: unknown) {
-  if (typeof value !== "string") {
-    return DEFAULT_MOUNT_PATH;
-  }
-
-  const mount = value.trim();
-  if (!mount || mount === "/") {
-    return DEFAULT_MOUNT_PATH;
-  }
-  if (!mount.startsWith("/") || mount.includes("..") || mount.includes("?")) {
-    return DEFAULT_MOUNT_PATH;
-  }
-  if (!/^\/[A-Za-z0-9._~!$&'()*+,;=:@/-]+$/.test(mount)) {
-    return DEFAULT_MOUNT_PATH;
-  }
-  return mount;
 }
 
 export function normalizePort(value: unknown, fallback: number) {
@@ -195,10 +169,6 @@ export function normalizeRuntimeConfig(source: unknown): RuntimeConfig {
     ffmpegPath: normalizeExecutablePath(input.ffmpegPath),
     mediamtxPath: normalizeExecutablePath(input.mediamtxPath),
     mediamtxConfigPath: normalizeExecutablePath(input.mediamtxConfigPath),
-    mp3HelperPath: normalizeExecutablePath(input.mp3HelperPath),
-    mp3HelperHost: sanitizeText(input.mp3HelperHost, 120) || base.mp3HelperHost,
-    mp3HelperPort: normalizePort(input.mp3HelperPort, base.mp3HelperPort),
-    mp3MountPath: normalizeMountPath(input.mp3MountPath),
     relayRtmpOrigin: sanitizeText(input.relayRtmpOrigin, 240) || base.relayRtmpOrigin,
     sampleRate: sanitizeText(input.sampleRate, 12) || base.sampleRate,
     channels: sanitizeText(input.channels, 4) || base.channels,

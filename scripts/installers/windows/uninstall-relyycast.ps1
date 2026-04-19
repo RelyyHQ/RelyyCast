@@ -290,7 +290,7 @@ if (-not $DryRun -and $needsAdmin -and -not (Test-IsAdmin)) {
 }
 
 Write-Log "Stopping RelyyCast-related processes..."
-$processNames = @("relyycast-win_x64", "mediamtx", "cloudflared", "relyy-mp3-helper")
+$processNames = @("relyycast-win_x64", "mediamtx", "cloudflared")
 foreach ($name in $processNames) {
   $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
   foreach ($proc in $procs) {

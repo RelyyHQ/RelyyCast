@@ -21,7 +21,6 @@ set -euo pipefail
 APP_PATH="/Applications/RelyyCast.app"
 PKG_IDS=(
   "com.relyycast.app"
-  "com.relyycast.app.mp3helper"
 )
 
 DRY_RUN=false
@@ -309,7 +308,6 @@ log "Stopping running RelyyCast processes..."
 stop_process_if_running "/Applications/RelyyCast.app/Contents/MacOS/relyycast"
 stop_process_if_running "/Applications/RelyyCast.app/Contents/MacOS/build/mediamtx/mac/mediamtx"
 stop_process_if_running "/Applications/RelyyCast.app/Contents/MacOS/build/bin/cloudflared"
-stop_process_if_running "/Applications/RelyyCast.app/Contents/MacOS/build/bin/relyy-mp3-helper"
 
 if $REMOVE_APP; then
   log "Removing app bundle..."

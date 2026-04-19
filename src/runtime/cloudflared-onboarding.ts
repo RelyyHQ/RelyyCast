@@ -51,6 +51,7 @@ export type EnsureCloudflareOnboardingInput = {
   cloudflareHostname: string;
   cloudflareConfigPath: string;
   originUrl: string;
+  mp3Path?: string;
   hlsOriginUrl?: string;
   hlsRelayPath?: string;
   trigger: "auto" | "request-login" | "retry";
@@ -541,6 +542,7 @@ function buildConfigYaml(
   certPath: string,
   hostname: string,
   originUrl: string,
+  mp3Path?: string,
   hlsOriginUrl?: string,
   hlsRelayPath?: string,
 ) {
@@ -550,19 +552,40 @@ function buildConfigYaml(
     `origincert: ${yamlSingleQuote(certPath)}`,
     "ingress:",
   ];
+  const normalizedMp3Path = (() => {
+    const raw = sanitizeText(mp3Path ?? "", 240);
+    if (!raw || raw === "/") {
+      return "";
+    }
+    return raw.startsWith("/") ? raw : `/${raw}`;
+  })();
+  const escapedMp3Path = normalizedMp3Path
+    ? normalizedMp3Path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    : "";
 
   if (hostname) {
-    // HLS path rule must come before the catch-all MP3 rule
+    // HLS path rule must come before the MP3 rule.
     if (hlsOriginUrl && hlsRelayPath) {
       const escapedPath = hlsRelayPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       lines.push(`  - hostname: ${yamlSingleQuote(hostname)}`);
-      lines.push(`    path: /${escapedPath}/.*`);
+      lines.push(`    path: ^/${escapedPath}/.*$`);
       lines.push(`    service: ${yamlSingleQuote(hlsOriginUrl)}`);
     }
-    lines.push(`  - hostname: ${yamlSingleQuote(hostname)}`);
-    lines.push(`    service: ${yamlSingleQuote(originUrl)}`);
+    if (escapedMp3Path) {
+      lines.push(`  - hostname: ${yamlSingleQuote(hostname)}`);
+      lines.push(`    path: ^${escapedMp3Path}$`);
+      lines.push(`    service: ${yamlSingleQuote(originUrl)}`);
+    }
   } else {
-    lines.push(`  - service: ${yamlSingleQuote(originUrl)}`);
+    if (hlsOriginUrl && hlsRelayPath) {
+      const escapedPath = hlsRelayPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      lines.push(`  - path: ^/${escapedPath}/.*$`);
+      lines.push(`    service: ${yamlSingleQuote(hlsOriginUrl)}`);
+    }
+    if (escapedMp3Path) {
+      lines.push(`  - path: ^${escapedMp3Path}$`);
+      lines.push(`    service: ${yamlSingleQuote(originUrl)}`);
+    }
   }
 
   lines.push("  - service: http_status:404");
@@ -825,6 +848,7 @@ export async function ensureCloudflareOnboarding(
     certResult.certPath,
     hostname,
     originUrl,
+    input.mp3Path,
     input.hlsOriginUrl,
     input.hlsRelayPath,
   );

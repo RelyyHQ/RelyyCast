@@ -36,6 +36,41 @@ export class RuntimeProcessSupervisor {
 
   constructor(private readonly deps: ProcessSupervisorDeps) {}
 
+  private getLaunchContext() {
+    return {
+      runtimeAppDataDirectory: this.deps.getRuntimeAppDataDirectory(),
+      getCurrentCloudflareState: () => this.deps.getRuntimeState()?.cloudflare ?? null,
+      applyCloudflareOnboardingState: (cloudflareState: RuntimeState["cloudflare"]) => {
+        this.deps.updateRuntimeState((current) => {
+          current.cloudflare = cloudflareState;
+        });
+      },
+    };
+  }
+
+  private async autoEnableMp3WhenFfmpegDetected() {
+    const state = this.deps.getRuntimeState();
+    if (!state || state.config.mp3Enabled) {
+      return;
+    }
+
+    try {
+      const ffmpegIngestLaunch = await buildLaunchForProcess(
+        "ffmpegIngest",
+        state.config,
+        this.getLaunchContext(),
+      );
+      if (!ffmpegIngestLaunch) {
+        return;
+      }
+      this.deps.updateRuntimeState((current) => {
+        current.config.mp3Enabled = true;
+      });
+    } catch {
+      // Ignore detection failure and keep current mp3Enabled state.
+    }
+  }
+
   cancelRestart(name: ManagedProcessName) {
     this.clearRestartTimer(name);
   }
@@ -50,9 +85,8 @@ export class RuntimeProcessSupervisor {
   }
 
   private isManagedProcessEnabled(name: ManagedProcessName, config: RuntimeState["config"]) {
-    if (name === "mp3Helper" || name === "ffmpegMp3Bridge") {
-      return config.mp3Enabled === true;
-    }
+    void name;
+    void config;
     return true;
   }
 
@@ -143,15 +177,7 @@ export class RuntimeProcessSupervisor {
       const launch = await buildLaunchForProcess(
         name,
         state.config,
-        {
-          runtimeAppDataDirectory: this.deps.getRuntimeAppDataDirectory(),
-          getCurrentCloudflareState: () => this.deps.getRuntimeState()?.cloudflare ?? null,
-          applyCloudflareOnboardingState: (cloudflareState) => {
-            this.deps.updateRuntimeState((current) => {
-              current.cloudflare = cloudflareState;
-            });
-          },
-        },
+        this.getLaunchContext(),
         options,
       );
 
@@ -159,7 +185,9 @@ export class RuntimeProcessSupervisor {
         this.deps.updateRuntimeState((current) => {
           setStoppedProcessState(current.processes[name], {
             clearCommand: true,
-            ...(name === "cloudflared" ? { lastError: current.cloudflare.message } : {}),
+            ...(name === "cloudflared"
+              ? { lastError: current.cloudflare.message }
+              : { lastError: null }),
           });
         });
         return;
@@ -200,6 +228,7 @@ export class RuntimeProcessSupervisor {
   }
 
   async startAllManagedProcesses() {
+    await this.autoEnableMp3WhenFfmpegDetected();
     for (const name of PROCESS_START_ORDER) {
       await this.startManagedProcess(name);
       await new Promise((resolve) => window.setTimeout(resolve, 300));
@@ -252,7 +281,7 @@ export class RuntimeProcessSupervisor {
       return;
     }
 
-    const names = ["mediamtx", "relyy-mp3-helper", "cloudflared"];
+    const names = ["mediamtx", "cloudflared"];
     for (const name of names) {
       try {
         await os.execCommand(`pkill -f "${name}" 2>/dev/null || true`);

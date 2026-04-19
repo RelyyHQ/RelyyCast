@@ -7,6 +7,7 @@
     "deps:seed": "node scripts/seed-binaries-from-legacy.mjs",
     "deps:preflight": "node scripts/preflight-runtime-deps.mjs",
     "deps:stage": "node scripts/sync-runtime-assets.mjs",
+    "ffmpeg:detect": "node scripts/detect-ffmpeg.mjs",
     "neutralino:run": "npm run deps:preflight && npm run deps:stage && npx neu run",
     "neutralino:build": "npm run deps:preflight && npm run deps:stage && npx neu build && node scripts/stage-dist-binaries.mjs",
     "installer:build": "node scripts/installers/build-installer.mjs",
@@ -17,9 +18,6 @@
     "version:bump:decimal": "node scripts/release/bump-version.mjs --mode decimal",
     "version:bump:full": "node scripts/release/bump-version.mjs --mode full",
     "neutralino:update": "npx neu update",
-    "mp3-helper:dev": "node scripts/run-bun-mp3-helper-dev.mjs",
-    "mp3-helper:build": "node scripts/build-bun-mp3-helper.mjs",
-    "mp3-helper:build:all": "node scripts/build-bun-mp3-helper.mjs --target bun-windows-x64-modern --target bun-windows-arm64-modern --target bun-darwin-x64 --target bun-darwin-arm64 --target bun-linux-x64-modern --target bun-linux-arm64-modern",
     "build": "npm run deps:preflight && vite build && npm run deps:stage",
     "start": "vite preview --host 127.0.0.1 --port 3000",
     "lint": "eslint ."
